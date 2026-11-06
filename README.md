@@ -67,6 +67,7 @@ Every step below has its commands in the **[runbook](RUNBOOK.md)**.
 These checks ran without the robot.
 
 - **π0.5 speed on an M3 Max:** 0.64 s per 50-action chunk, using 9.2 GiB in bfloat16. That chunk covers 1.67 s of motion at 30 FPS, so the Mac is fast enough on paper. The first chunk took about 5 s. This timed the model alone on random weights, so real runs will be slower once cameras and preprocessing are included.
+- **Real-time chunking on the same Mac:** 0.66 s per chunk, using 9.3 GiB. I counted its guidance steps to confirm they really ran, because the time was so close to plain inference.
 - **Commands:** every record, train and rollout command in the runbook parses against LeRobot 0.6.2. Parsing proves the flags are valid, not that the runs will work.
 
 ## Not tested yet
