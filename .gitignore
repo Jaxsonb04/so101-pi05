@@ -1,0 +1,7 @@
+# Allowlist. This folder also holds private build notes, a LeRobot checkout and
+# large print files, so nothing is published unless it is listed here.
+/*
+!/.gitignore
+!/README.md
+!/RUNBOOK.md
+!/so101.env.example
