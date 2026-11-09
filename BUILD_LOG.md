@@ -37,9 +37,9 @@ I built, wired, measured and operated the arms myself. [Claude Code](https://cla
 - Traced the startup motion in the source: the follower turned its motors on before setting their target positions, so stale targets could run. Patched it locally to set targets first and enable torque last. Also made shutdown try every motor and always close the port, instead of stopping at the first error. Both bugs were reproduced in tests before the fix; afterwards **51 focused tests passed**.
 - My step limit made following slow and filled the log with warnings. Lesson: start with the official command and change one thing at a time. With the standard command: **59.5 Hz over 95.5 s**, 0 of 5,680 loop ticks over budget, clean shutdown.
 
-[![Leader and follower arms on a desk; the follower copies the leader's pose](media/2026-10-19-first-teleop.jpg)](media/2026-10-19-first-teleop.mp4)
+![Animated: leader and follower arms on a desk; the follower copies the leader's motion](media/2026-10-19-first-teleop.gif)
 
-*First teleoperation: I move the leader arm (right) and the follower (left) copies it. Click to play (16 s).*
+*First teleoperation: I move the leader arm (right) and the follower (left) copies it. [Full 16 s clip (MP4)](https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-10-19-first-teleop.mp4).*
 
 ## October 30: restart check
 
@@ -81,9 +81,9 @@ I built, wired, measured and operated the arms myself. [Claude Code](https://cla
 - I tried compressed video (MJPG). A later test showed macOS ignores that setting, so it wasn't the fix, and I corrected my notes. The stall hasn't come back. A 15 s camera-only test gave 29.6 and 29.5 fps, with a worst frame gap of 67 ms, and teleoperation with both feeds ran for over 3 minutes.
 - Looking at the saved frames showed the camera names were swapped: index 0 is the overhead camera, index 1 the wrist. I fixed the config before recording any data. Training on swapped camera names would have taught the model the wrong views.
 
-[![Teleoperation with the Rerun viewer on the laptop showing both camera feeds and live joint plots](media/2026-11-08-teleop-with-cameras.jpg)](media/2026-11-08-teleop-with-cameras.mp4)
+![Animated: teleoperation with the Rerun viewer on the laptop showing both camera feeds and live joint plots](media/2026-11-08-teleop-with-cameras.gif)
 
-*Teleoperation with both camera feeds and live joint plots in Rerun. Click to play (11 s).*
+*Teleoperation with both camera feeds and live joint plots in Rerun. [Full 11 s clip (MP4)](https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-teleop-with-cameras.mp4).*
 
 ## Next
 
