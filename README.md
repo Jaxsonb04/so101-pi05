@@ -2,9 +2,9 @@
 
 I'm building a robot-learning setup end to end. I printed, wired and calibrated a pair of [SO-101](https://github.com/TheRobotStudio/SO-ARM100) arms and integrated two cameras. Next I'll teach the follower arm a real task with Physical Intelligence's [π0.5](https://www.physicalintelligence.company/blog/pi05). The goal: say *"put the tools in the toolbox"* and have the arm do it.
 
-[![Teleoperation with the Rerun viewer on the laptop showing both camera feeds and live joint plots](media/2026-11-08-teleop-with-cameras.jpg)](media/2026-11-08-teleop-with-cameras.mp4)
+![Animated: teleoperation with the Rerun viewer on the laptop showing both camera feeds and live joint plots](media/2026-11-08-teleop-with-cameras.gif)
 
-▶ [Teleoperation with both cameras and live joint plots](media/2026-11-08-teleop-with-cameras.mp4) (Nov 8, 11 s) · ▶ [First leader–follower teleoperation](media/2026-10-19-first-teleop.mp4) (Oct 19, 16 s)
+Full clips (MP4 download): [teleoperation with both cameras and live joint plots](https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-teleop-with-cameras.mp4) (Nov 8, 11 s) · [first leader–follower teleoperation](https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-10-19-first-teleop.mp4) (Oct 19, 16 s)
 
 ## Status, November 8, 2026
 
@@ -40,7 +40,7 @@ Problems I hit, how I isolated them, and how I checked the fix. The full detail 
 
 | First teleoperation | Camera stand | What the robot sees |
 | --- | --- | --- |
-| [![Leader and follower arms on a desk; the follower copies the leader's pose](media/2026-10-19-first-teleop.jpg)](media/2026-10-19-first-teleop.mp4) | ![Printed overhead camera tower with a camera board on top, next to the follower arm](media/2026-11-08-camera-stand.jpg) | ![Overhead camera view of the desk](media/2026-11-08-robot-view-overhead.jpg) ![Wrist camera view showing the gripper jaws](media/2026-11-08-robot-view-wrist.jpg) |
+| ![Animated: leader and follower arms on a desk; the follower copies the leader's motion](media/2026-10-19-first-teleop.gif) | ![Printed overhead camera tower with a camera board on top, next to the follower arm](media/2026-11-08-camera-stand.jpg) | ![Overhead camera view of the desk](media/2026-11-08-robot-view-overhead.jpg) ![Wrist camera view showing the gripper jaws](media/2026-11-08-robot-view-wrist.jpg) |
 
 - **Arms:** one leader (moved by hand) and one follower (copies it), 3D printed in PLA+
 - **Motors:** 12 Feetech STS3215. The follower uses 1:345 gearing; the leader mixes 1:191, 1:345 and 1:147 so it's easy to move by hand
