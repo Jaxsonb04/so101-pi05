@@ -1,6 +1,6 @@
 # Runbook: SO-101 + π0.5
 
-Work from top to bottom. The flags were checked against LeRobot 0.6.2, but none of these commands has been run on the arm yet.
+Work from top to bottom. The flags were checked against LeRobot 0.6.2. Steps 1–4 (access, hardware, cameras, recording and replay) have been run on the arm; training and everything after it haven't yet.
 
 ## Before you start
 
@@ -79,49 +79,51 @@ Check that you could do the task yourself using only those two views. Support th
 
 ## 4. Record demonstrations
 
-Start with 5 test episodes:
-
-```bash
-lerobot-record \
-  --robot.type=so101_follower --robot.port=$FOLLOWER_PORT --robot.id=follower \
-  --robot.cameras="$CAMERAS" \
-  --teleop.type=so101_leader --teleop.port=$LEADER_PORT --teleop.id=leader \
-  --display_data=true \
-  --dataset.repo_id=${DATASET}_test \
-  --dataset.num_episodes=5 \
-  --dataset.single_task="$TASK" \
-  --dataset.episode_time_s=60 \
-  --dataset.reset_time_s=20 \
-  --dataset.private=true \
-  --dataset.streaming_encoding=true \
-  --dataset.encoder_threads=2
-```
+I record with a small page I built, [`tools/record_ui.py`](tools/record_ui.py). It runs LeRobot's own `lerobot-record` with the usual flags (no LeRobot files changed) and replaces the keyboard controls with a browser page that shows both cameras:
 
 | Key | What it does |
 | --- | --- |
-| `→` or `n` | Ends the episode early |
-| `←` or `r` | Discards the episode and re-records it |
-| `Esc` or `q` | Stops, encodes the video and uploads |
+| `A` | Start recording an episode. Between episodes the follower still copies the leader, but nothing is recorded |
+| `B` | Pass: save the episode, labelled passed |
+| `C` | Fail: save the episode, labelled failed. Failed attempts are data too |
+| `D` | Cancel: throw the episode away (false starts, bumps) and record it again |
 
-If the keys do nothing, keep the Terminal window focused. LeRobot falls back to reading keys there without macOS Accessibility permission.
+![The recording page while recording: a red bar with the timer and the Pass, Fail and Cancel keys, above the wrist and overhead camera feeds](media/2026-11-08-recording-page.jpg)
 
-Replay one episode to check the recording:
+- `--dataset.num_episodes` is the number of **passed** episodes wanted in the dataset. Failed and cancelled ones don't count.
+- Every result goes into `episode_labels.csv` inside the dataset, which is uploaded with it.
+- Ctrl+C keeps every saved episode and uploads them. Running the same command again continues the same dataset, and earlier passes count toward the target.
+- At the end it prints the flag that skips the failed episodes in training, e.g. `--dataset.exclude_episodes="[2, 12]"`.
+- `--dataset.no_stamp=true` keeps the dataset name exactly as given. Without it LeRobot adds a date-time stamp, and the replay and train commands below wouldn't find the data.
+
+Try the page without the robot: `python tools/record_ui.py --demo`. Practise with the real arm and cameras, without touching your datasets or uploading anything: `tools/practice.sh`.
+
+Start with 5 test passes:
 
 ```bash
-lerobot-replay --robot.type=so101_follower --robot.port=$FOLLOWER_PORT --robot.id=follower --dataset.repo_id=${DATASET}_test --dataset.episode=0
+python tools/record_ui.py --robot.type=so101_follower --robot.port=$FOLLOWER_PORT --robot.id=follower --robot.cameras="$CAMERAS" --teleop.type=so101_leader --teleop.port=$LEADER_PORT --teleop.id=leader --dataset.repo_id=${DATASET}_test --dataset.num_episodes=5 --dataset.single_task="$TASK" --dataset.episode_time_s=120 --dataset.private=true --dataset.no_stamp=true --dataset.streaming_encoding=true --dataset.encoder_threads=2
+```
+
+Replay a passed episode to check the recording. The follower repeats the recorded joint motions by itself, so clear the table first:
+
+```bash
+lerobot-replay --robot.type=so101_follower --robot.port=$FOLLOWER_PORT --robot.id=follower --dataset.repo_id=${DATASET}_test --dataset.episode=1
 ```
 
 Then run the same record command with `--dataset.repo_id=$DATASET` and `--dataset.num_episodes=50`.
 
-- Scatter the same 3 tools in new positions and angles every episode. Put them back on the table during the 20-second reset.
-- Keep the toolbox at a taped spot, and don't move the cameras between episodes.
-- Grasp each tool the same way each time, and keep everything in the overhead view.
-- If a run stops partway, run the same command again with `--resume=true`. LeRobot adds a date-time stamp to the dataset name when a recording starts, so set `--dataset.repo_id` to the full stamped name, `--dataset.root` to that dataset's existing local folder, and `--dataset.num_episodes` to the number still missing (it counts new episodes, not the total).
+- Don't move the cameras or the toolbox between episodes. Tape two corners of the toolbox.
+- Change only where the 3 tools sit, and at what angle, every episode. Spread them over the whole reachable table.
+- Keep hands, screens and anything that looks like the tools out of the overhead view. A laptop screen in view changes between episodes, which a policy can latch onto.
 - Leave `--dataset.private=true` on, because the overhead camera can see your room.
+
+If you use plain `lerobot-record` instead, add `--dataset.no_stamp=true`, and don't press Ctrl+C during its "Reset the environment" pause: it saves an episode only after that pause.
 
 ## 5. Fine-tune π0.5
 
 This can't run on the Mac. It runs on a cloud A100 at $2.50 an hour, and the timeout caps the spend.
+
+If some recorded episodes failed, add the `--dataset.exclude_episodes="[...]"` flag the recording page printed to both commands below, so training uses passed episodes only. If the smoke test rejects that flag (the cloud image can differ from LeRobot 0.6.2), make a pass-only copy with `lerobot-edit-dataset --operation.type delete_episodes`, creating its repo as private first, and train on that.
 
 ### Smoke test
 
@@ -230,7 +232,7 @@ lerobot-rollout \
   --robot.type=so101_follower --robot.port=$FOLLOWER_PORT --robot.id=follower \
   --robot.cameras="$CAMERAS" \
   --teleop.type=so101_leader --teleop.port=$LEADER_PORT --teleop.id=leader \
-  --dataset.repo_id=$HF_USER/eval_so101_tools_toolbox \
+  --dataset.repo_id=$HF_USER/rollout_so101_tools_toolbox \
   --dataset.num_episodes=20 \
   --dataset.episode_time_s=60 \
   --dataset.reset_time_s=20 \
@@ -238,6 +240,8 @@ lerobot-rollout \
   --dataset.private=true \
   --device=mps
 ```
+
+`lerobot-rollout` only accepts result datasets whose name starts with `rollout_`. Press `→` at the end of every trial, pass or fail: `←` would delete a failed trial and inflate the score.
 
 For each trial, write down where the tools were, how many ended up in the toolbox (3 of 3 counts as a success) and how it failed. Include some positions you didn't train on.
 
@@ -267,7 +271,10 @@ Version 1 needs no code: turn on macOS Dictation, type `/subtask `, dictate the 
 | --- | --- |
 | `QUANTILES normalization mode requires q01 and q99 stats` | Add `--policy.normalization_mapping='{"ACTION": "MEAN_STD", "STATE": "MEAN_STD", "VISUAL": "IDENTITY"}'` to the train command. |
 | 401 or 403 from `paligemma` | Accept the license in step 1, and check you're logged in with `hf auth whoami`. |
-| A camera times out or shows black | Run `lerobot-find-cameras opencv` again; indexes can change after a replug. If both cameras share a USB hub, give one its own port (a USB-C to USB-A adapter works). On this Mac `fourcc: MJPG` had no effect: LeRobot warns and keeps the default format. |
+| `latest frame is too old` (a camera sent nothing for 0.5 s) | Check whether the camera physically disconnected: `log show --last 10m --style compact \| grep Innomaker \| grep -c 'hardware connection lost'` (use your camera's name). Here the wrist camera dropped 193 times in one evening while the overhead camera on the same hub dropped once, so the fault was that camera's own cable, plug or port, not software or USB bandwidth. Reseat or replace the cable with strain relief at the wrist, swap hub ports, or plug it straight into the Mac. |
+| A camera shows black or the wrong view | Run `lerobot-find-cameras opencv` again; indexes can change after a replug. On this Mac `fourcc: MJPG` had no effect: LeRobot warns and keeps the default format. |
+| `FileExistsError` when recording starts | An earlier run stopped before saving its first episode and left an empty dataset folder. The recording page removes it automatically. With plain `lerobot-record`, delete that empty folder, or continue a folder that has episodes with `--resume=true --dataset.root=<its folder>`. |
+| `Dataset names for rollout must start with 'rollout_'` | Name `lerobot-rollout` result datasets `rollout_...`. |
 | macOS finds 0 cameras ("not authorized to capture video") | Allow your terminal app in System Settings → Privacy & Security → Camera, then quit and reopen it. |
 | `No status packet` at startup | Run the same command again. This cleared on retry here before. |
 | `Overload error` on a motor | Stop and cut DC power, then check for a jam or a pinched cable. The elbow did this once and the cause was never found. |

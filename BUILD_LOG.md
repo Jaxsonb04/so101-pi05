@@ -78,16 +78,68 @@ I built, wired, measured and operated the arms myself. [Claude Code](https://cla
 
 - macOS found 0 cameras at first because the terminal didn't have camera permission.
 - The first run with both camera feeds stopped after 19.8 s: a frame from one camera was more than 500 ms old. Both cameras share one USB 2 hub, because the Mac has no USB-A ports.
-- I tried compressed video (MJPG). A later test showed macOS ignores that setting, so it wasn't the fix, and I corrected my notes. The stall hasn't come back. A 15 s camera-only test gave 29.6 and 29.5 fps, with a worst frame gap of 67 ms, and teleoperation with both feeds ran for over 3 minutes.
+- I tried compressed video (MJPG). A later test showed macOS ignores that setting, so it wasn't the fix, and I corrected my notes. The stall hasn't come back. A 15 s camera-only test gave 29.6 and 29.5 fps, with a worst frame gap of 67 ms, and teleoperation with both feeds ran for over 3 minutes. *Correction, later the same evening: the stall hadn't gone away, and it wasn't the hub's bandwidth. The wrist camera was physically disconnecting; see "Camera dropouts" below.*
 - Looking at the saved frames showed the camera names were swapped: index 0 is the overhead camera, index 1 the wrist. I fixed the config before recording any data. Training on swapped camera names would have taught the model the wrong views.
 
 ![Animated: teleoperation with the Rerun viewer on the laptop showing both camera feeds and live joint plots](media/2026-11-08-teleop-with-cameras.gif)
 
 *Teleoperation with both camera feeds and live joint plots in Rerun. [Full 11 s clip (MP4)](https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-teleop-with-cameras.mp4).*
 
+## November 8 (evening): recording the demonstrations
+
+### Data collection
+
+<table>
+  <tr>
+    <th width="24%">Teleoperating a demonstration</th>
+    <th width="52%">The recording page</th>
+    <th width="24%">First replay</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="media/2026-11-08-data-collection.gif" height="240" alt="Animated: the follower arm, driven from the leader, picks up a bit strip and puts it into the open toolbox"></td>
+    <td align="center"><img src="media/2026-11-08-recording-page.gif" height="240" alt="Animated: the recording page cancels an episode, records one with a red timer bar, then saves it as passed"></td>
+    <td align="center"><img src="media/2026-11-08-first-replay.gif" height="240" alt="Animated: the follower arm moves through a recorded episode by itself"></td>
+  </tr>
+  <tr>
+    <td><sub>I drive the leader; the follower puts a bit strip into the toolbox. <a href="https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-data-collection.mp4">MP4, 9 s</a></sub></td>
+    <td><sub>Cancel, record, then save as passed (GIF at 2× speed). <a href="https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-recording-page.mp4">MP4, 43 s, real time</a></sub></td>
+    <td><sub><code>lerobot-replay</code> of a recorded test episode. <a href="https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-first-replay.mp4">MP4, 25 s</a></sub></td>
+  </tr>
+</table>
+
+The replay is the first time the follower moved without me driving it. It plays back the recorded joint motions without looking at the cameras, and I'd moved the toolbox since recording, so it goes through the motions without picking anything up. A trained policy is the next step.
+
+### A recording page instead of keyboard shortcuts
+
+- Plain `lerobot-record` has three keys: end the episode, re-record it, and stop. It can't wait for me to start an episode, or label an attempt passed or failed, and its keys are read system-wide through macOS Accessibility, so a launcher can't simply type them for me. Its timed reset pause also got in the way: I lost a complete 60-second episode by pressing Ctrl+C during that pause, because LeRobot saves an episode only after it.
+- I built [`tools/record_ui.py`](tools/record_ui.py). It runs LeRobot's own `record()` unchanged and swaps two things at runtime: the keyboard listener and the per-episode loop. A local page shows both cameras and the state: **A** start, **B** pass, **C** fail, **D** cancel. Passed and failed episodes are both saved, with a label in `episode_labels.csv`. Cancelled ones are discarded through LeRobot's own re-record path, which also cancels that episode's video encoding.
+- `--dataset.num_episodes` counts passes only, and the count carries over between sessions, so after Ctrl+C the same command picks up where it left off.
+- Before using it on the arm I had the launcher reviewed independently against LeRobot's source. That found three real bugs: resuming would have crashed, because LeRobot's `resume()` needs the dataset folder passed explicitly; a label could be written for an episode whose save was cut off by Ctrl+C; and the list of failed episodes to skip covered only the current session. I fixed all three and added each case to a self-test that runs without the robot.
+- Smaller things it handles: LeRobot adds a date-time stamp to every new dataset name unless `--dataset.no_stamp=true`, and refuses to create a dataset in a folder an interrupted run left behind.
+
+### Camera dropouts: the real cause
+
+- Recording kept stopping with `OpenCVCamera(1) latest frame is too old`. That only says the wrist camera sent nothing for half a second.
+- The macOS kernel log said more: `hardware connection lost` for the wrist camera, then a re-enumeration about 30 ms later, at the same second each run stopped. Because the camera comes back so fast, it always looks connected.
+- I counted the events per USB port: **193 disconnects of the wrist camera in one evening against 1 for the overhead camera** on the same hub, and 2,857 USB transaction errors against 2. The servo board on that hub never dropped by itself.
+- That rules out software and the hub as a whole: drops started before any LeRobot command, happened during calibration when no program had the cameras open, and continued with nothing running. It also rules out USB bandwidth: OpenCV runs 640×480 MJPEG at 30 fps, and the idle-time errors were on the control endpoints, not the video endpoint. My earlier bandwidth explanation was wrong.
+- The remaining suspects are the wrist camera's cable or plug, which flex with the arm, its hub port, or the camera board. A test session of about 6 minutes had no drops, but it dropped again soon after, so this is still open.
+- I decided against adding an automatic camera reconnect: it couldn't save an episode the drop interrupted, and it would hide the fault.
+
+### Reviewing my own data
+
+- I recorded 5 test passes, then checked all 8 test episodes (5 passes, 3 fails): 8 sampled frames per camera, plus joint ranges and leader–follower tracking error.
+- All 5 passes were complete. Two "failed" episodes weren't attempts at all: 5 s and 1 s long, with under 0.2° of joint motion. That's why the page now has Cancel.
+- The review also caught problems in the scene: my hand entering the overhead view at the end of most episodes, my laptop screen in the corner of the overhead view (its content changes between episodes, which a policy can latch onto), a dark image, and orange scraps that look like the bit strips. I fixed the scene before the real recording. The overhead camera and the toolbox now stay put; only the tools move between episodes.
+
+### Where it stands
+
+- As of November 8 the real dataset has **21 episodes: 19 passed, 2 failed**, uploaded privately to Hugging Face at the end of that session. 50 passes is the target.
+- The wrist camera fault isn't fixed yet.
+
 ## Next
 
-1. Record 50 demonstrations of putting three tools into the toolbox.
+1. Fix the wrist camera's connection, then finish recording: 50 passed demonstrations of putting three tools into the toolbox (19 so far).
 2. Fine-tune π0.5 on Hugging Face Jobs: a smoke test first, then the full run.
 3. Run it on the arm, score 20 trials and compare checkpoints.
 4. Add voice: speech-to-text on the Mac picks the task sentence π0.5 was trained on.
