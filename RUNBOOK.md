@@ -116,7 +116,7 @@ Then run the same record command with `--dataset.repo_id=$DATASET` and `--datase
 - Scatter the same 3 tools in new positions and angles every episode. Put them back on the table during the 20-second reset.
 - Keep the toolbox at a taped spot, and don't move the cameras between episodes.
 - Grasp each tool the same way each time, and keep everything in the overhead view.
-- If a run stops partway, run the same command again with `--resume=true`, the same `--dataset.repo_id`, and `--dataset.num_episodes` set to the number still missing (it counts new episodes, not the total).
+- If a run stops partway, run the same command again with `--resume=true`. LeRobot adds a date-time stamp to the dataset name when a recording starts, so set `--dataset.repo_id` to the full stamped name, `--dataset.root` to that dataset's existing local folder, and `--dataset.num_episodes` to the number still missing (it counts new episodes, not the total).
 - Leave `--dataset.private=true` on, because the overhead camera can see your room.
 
 ## 5. Fine-tune π0.5
