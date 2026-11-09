@@ -7,3 +7,5 @@
 !/so101.env.example
 !/BUILD_LOG.md
 !/media/
+!/tools/
+/tools/__pycache__/
