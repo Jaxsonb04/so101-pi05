@@ -47,7 +47,7 @@ hf auth whoami
 2. Print the [overhead stand](https://github.com/TheRobotStudio/SO-ARM100/tree/a758567c3978dfeefe282ede0500085a48fe8f78/Optional/Overhead_Cam_Mount_32x32_UVC_Module) and the [wrist mount](https://github.com/TheRobotStudio/SO-ARM100/tree/a758567c3978dfeefe282ede0500085a48fe8f78/Optional/Wrist_Cam_Mount_32x32_UVC_Module). Together they take about 8.5 hours and 260 g of filament, so check the spool first.
 3. Test-fit each stand joint by hand, then assemble it with M2 screws.
 4. With power off, swap the wrist mount in for `Wrist_Roll_Follower_SO101`. Note how the old part sits on the horn first, and keep it.
-5. Recalibrate the follower, then the leader. At the existing-file prompt, type `c` and press Enter, because plain Enter reuses the old calibration. Use the same reference pose on both arms.
+5. Recalibrate the follower, then the leader. At the existing-file prompt, type `c` and press Enter, because plain Enter reuses the old calibration. Use the same reference pose on both arms. LeRobot puts each joint's zero at the middle of the range you sweep, not at the reference pose, so sweep every joint fully and evenly both ways. If a joint still sits off afterwards, measure both arms in the same pose and shift the leader's range, as described in the [build log](BUILD_LOG.md#november-8--calibration-root-cause-and-cameras).
 
 ```bash
 lerobot-calibrate --robot.type=so101_follower --robot.port=$FOLLOWER_PORT --robot.id=follower
@@ -90,8 +90,8 @@ lerobot-record \
   --dataset.repo_id=${DATASET}_test \
   --dataset.num_episodes=5 \
   --dataset.single_task="$TASK" \
-  --dataset.episode_time_s=30 \
-  --dataset.reset_time_s=15 \
+  --dataset.episode_time_s=60 \
+  --dataset.reset_time_s=20 \
   --dataset.private=true \
   --dataset.streaming_encoding=true \
   --dataset.encoder_threads=2
@@ -113,9 +113,10 @@ lerobot-replay --robot.type=so101_follower --robot.port=$FOLLOWER_PORT --robot.i
 
 Then run the same record command with `--dataset.repo_id=$DATASET` and `--dataset.num_episodes=50`.
 
-- Use 5 object positions with 10 episodes each.
-- Don't move the cameras between episodes.
-- Grasp the same way each time, and keep the object in view.
+- Scatter the same 3 tools in new positions and angles every episode. Put them back on the table during the 20-second reset.
+- Keep the toolbox at a taped spot, and don't move the cameras between episodes.
+- Grasp each tool the same way each time, and keep everything in the overhead view.
+- If a run stops partway, run the same command again with `--resume=true`.
 - Leave `--dataset.private=true` on, because the overhead camera can see your room.
 
 ## 5. Fine-tune π0.5
@@ -172,8 +173,8 @@ lerobot-train \
   --steps=10000 \
   --save_freq=2500 \
   --save_checkpoint_to_hub=true \
-  --output_dir=outputs/pi05_so101_cube_bin \
-  --job_name=pi05_so101_cube_bin \
+  --output_dir=outputs/pi05_so101_tools_toolbox \
+  --job_name=pi05_so101_tools_toolbox \
   --job.target=a100-large \
   --job.timeout=6h
 ```
@@ -229,16 +230,16 @@ lerobot-rollout \
   --robot.type=so101_follower --robot.port=$FOLLOWER_PORT --robot.id=follower \
   --robot.cameras="$CAMERAS" \
   --teleop.type=so101_leader --teleop.port=$LEADER_PORT --teleop.id=leader \
-  --dataset.repo_id=$HF_USER/eval_so101_cube_bin \
+  --dataset.repo_id=$HF_USER/eval_so101_tools_toolbox \
   --dataset.num_episodes=20 \
-  --dataset.episode_time_s=30 \
-  --dataset.reset_time_s=15 \
+  --dataset.episode_time_s=60 \
+  --dataset.reset_time_s=20 \
   --dataset.single_task="$TASK" \
   --dataset.private=true \
   --device=mps
 ```
 
-For each trial, write down the object position, whether it succeeded and how it failed. Include some positions you didn't train on.
+For each trial, write down where the tools were, how many ended up in the toolbox (3 of 3 counts as a success) and how it failed. Include some positions you didn't train on.
 
 Then compare earlier checkpoints, because the last one isn't always the best. One published [SO-101 π0.5 run](https://huggingface.co/Project-IRA/TPSoSe2026_Pi05_LeRobot_SO101_Finetuning_V7_Full_V2) got its best real-arm results near step 8,000 and got worse after that. It was a different, much larger dataset, so treat that as a reason to check, not a prediction.
 
@@ -248,13 +249,26 @@ hf download $POLICY --include "checkpoints/005000/pretrained_model/*" --local-di
 
 Then use `--policy.path=outputs/ckpts/checkpoints/005000/pretrained_model` in the rollout command.
 
+## 8. Voice commands
+
+π0.5 only does tasks it was trained on, so voice picks a trained task; it doesn't teach new ones. Each new task needs its own demonstrations with one fixed sentence.
+
+Interactive mode keeps the arm still until you type `/start`, and takes `/subtask <sentence>`, `/reset` and `/stop`:
+
+```bash
+lerobot-rollout --strategy.type=base --inference.type=rtc --inference.rtc.execution_horizon=25 --inference.rtc.max_guidance_weight=10.0 --policy.path=$POLICY --robot.type=so101_follower --robot.port=$FOLLOWER_PORT --robot.id=follower --robot.cameras="$CAMERAS" --task="$TASK" --duration=60 --device=mps --interactive=true
+```
+
+Version 1 needs no code: turn on macOS Dictation, type `/subtask `, dictate the task sentence, press Enter, then type `/start`. Version 2 is a short script that listens to the microphone, matches what you said to a trained sentence, and types those commands for you. Voice is not a safety stop; the follower's DC power is.
+
 ## If something goes wrong
 
 | What you see | What to do |
 | --- | --- |
 | `QUANTILES normalization mode requires q01 and q99 stats` | Add `--policy.normalization_mapping='{"ACTION": "MEAN_STD", "STATE": "MEAN_STD", "VISUAL": "IDENTITY"}'` to the train command. |
 | 401 or 403 from `paligemma` | Accept the license in step 1, and check you're logged in with `hf auth whoami`. |
-| A camera times out or shows black | Run `lerobot-find-cameras opencv` again, and try each camera on its own USB port. If that fails, add `fourcc: "MJPG"` to that camera in `CAMERAS`. |
+| A camera times out or shows black | Run `lerobot-find-cameras opencv` again; indexes can change after a replug. If both cameras share a USB hub, give one its own port (a USB-C to USB-A adapter works). On this Mac `fourcc: MJPG` had no effect: LeRobot warns and keeps the default format. |
+| macOS finds 0 cameras ("not authorized to capture video") | Allow your terminal app in System Settings → Privacy & Security → Camera, then quit and reopen it. |
 | `No status packet` at startup | Run the same command again. This cleared on retry here before. |
 | `Overload error` on a motor | Stop and cut DC power, then check for a jam or a pinched cable. The elbow did this once and the cause was never found. |
 | The smoke test fails on a config key | The cloud image doesn't match your LeRobot version. Compare your version with the image, or pin one with `--job.image`. |
