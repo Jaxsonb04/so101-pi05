@@ -47,7 +47,7 @@ hf auth whoami
 2. Print the [overhead stand](https://github.com/TheRobotStudio/SO-ARM100/tree/a758567c3978dfeefe282ede0500085a48fe8f78/Optional/Overhead_Cam_Mount_32x32_UVC_Module) and the [wrist mount](https://github.com/TheRobotStudio/SO-ARM100/tree/a758567c3978dfeefe282ede0500085a48fe8f78/Optional/Wrist_Cam_Mount_32x32_UVC_Module). Together they take about 8.5 hours and 260 g of filament, so check the spool first.
 3. Test-fit each stand joint by hand, then assemble it with M2 screws.
 4. With power off, swap the wrist mount in for `Wrist_Roll_Follower_SO101`. Note how the old part sits on the horn first, and keep it.
-5. Recalibrate the follower, then the leader. At the existing-file prompt, type `c` and press Enter, because plain Enter reuses the old calibration. Use the same reference pose on both arms. LeRobot puts each joint's zero at the middle of the range you sweep, not at the reference pose, so sweep every joint fully and evenly both ways. If a joint still sits off afterwards, measure both arms in the same pose and shift the leader's range, as described in the [build log](BUILD_LOG.md#november-8--calibration-root-cause-and-cameras).
+5. Recalibrate the follower, then the leader. At the existing-file prompt, type `c` and press Enter, because plain Enter reuses the old calibration. Use the same reference pose on both arms. LeRobot puts each joint's zero at the middle of the range you sweep, not at the reference pose, so sweep every joint fully and evenly both ways. If a joint still sits off afterwards, measure both arms in the same pose and shift the leader's range, as described in the [build log](BUILD_LOG.md#november-8-calibration-root-cause-and-cameras).
 
 ```bash
 lerobot-calibrate --robot.type=so101_follower --robot.port=$FOLLOWER_PORT --robot.id=follower
@@ -116,7 +116,7 @@ Then run the same record command with `--dataset.repo_id=$DATASET` and `--datase
 - Scatter the same 3 tools in new positions and angles every episode. Put them back on the table during the 20-second reset.
 - Keep the toolbox at a taped spot, and don't move the cameras between episodes.
 - Grasp each tool the same way each time, and keep everything in the overhead view.
-- If a run stops partway, run the same command again with `--resume=true`.
+- If a run stops partway, run the same command again with `--resume=true`, the same `--dataset.repo_id`, and `--dataset.num_episodes` set to the number still missing (it counts new episodes, not the total).
 - Leave `--dataset.private=true` on, because the overhead camera can see your room.
 
 ## 5. Fine-tune π0.5
