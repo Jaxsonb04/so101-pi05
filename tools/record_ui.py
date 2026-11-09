@@ -78,7 +78,14 @@ def record_loop(**kw):
         return  # LeRobot's timed reset phase: skipped, because A starts the next episode
     index = dataset.num_episodes  # the number LeRobot gives this episode when it saves it
     labels = Path(dataset.root) / LABELS
-    current.update(dataset=dataset, labels=labels)
+    if current.get("dataset") is not dataset:
+        current.update(dataset=dataset, labels=labels)
+        push = dataset.push_to_hub  # LeRobot uploads before run() finishes, so fix the labels first
+
+        def push_saved(*a, **k):
+            saved_labels(labels, dataset.num_episodes)
+            return push(*a, **k)
+        dataset.push_to_hub = push_saved
     passed, failed = saved_labels(labels, index)  # every session of this dataset
     state.update(passed=passed, failed=len(failed), failed_episodes=failed)
     if state["target"] and passed >= state["target"]:  # already enough passes: record nothing, just finish
@@ -89,7 +96,8 @@ def record_loop(**kw):
                  decided=None, started=None, cameras=list(cameras))
     while state["phase"] == "ready":  # arms follow the leader, nothing is recorded
         orig_record_loop(**{**kw, "dataset": None, "timer": None, "control_time_s": 60})
-    events["exit_early"] = False
+    with lock:
+        events["exit_early"] = bool(state["decided"])  # A's signal is used up; a B/C/D pressed right after A still ends the episode
     orig_record_loop(**kw)  # records until B, C or D, or the episode time limit
     with lock:
         if state["decided"] == "d":  # cancelled: not saved, not labelled, not counted
@@ -232,7 +240,7 @@ def fake_record_loop(events, control_time_s, **_):
 def fake_record(root, limit, saved=0):
     """The episode loop of lerobot_record.record() (lines 500-553), without a robot."""
     robot = SimpleNamespace(cameras={"wrist": FakeCamera(), "top": FakeCamera()})
-    dataset = SimpleNamespace(num_episodes=saved, root=root)
+    dataset = SimpleNamespace(num_episodes=saved, root=root, push_to_hub=lambda: None)
     while not events["stop_recording"]:
         record_loop(robot=robot, dataset=dataset, events=events, control_time_s=limit,
                     single_task="Put the tools on the table into the toolbox")
@@ -286,6 +294,10 @@ def selftest():
     post("d"); until("ready")  # cancelled: nothing saved, episode 1 is recorded again
     assert (state["passed"], state["failed"], state["last"]) == (0, 1, "d")
     assert post("d") == 200 and state["phase"] == "ready"  # D outside recording is ignored
+    for _ in range(20):  # D right after A, before the waiting loop has noticed A
+        t = time.monotonic(); press("a"); press("d"); until("ready")
+        assert time.monotonic() - t < 0.3
+        assert (state["passed"], state["failed"], state["last"]) == (0, 1, "d")
     post("a"); until("recording")
     post("b"); until("ready")  # episode 1: passed
     assert (state["passed"], state["failed"], state["last"]) == (1, 1, "b")
@@ -327,6 +339,15 @@ def selftest():
     labels.write_text("episode_index,result\n0,pass\n1,fail\n2,fail\n")
     assert saved_labels(labels, 2) == (1, [1])
     assert labels.read_text() == "episode_index,result\n0,pass\n1,fail\n"
+    # An upload after a cut-off save must not carry the label of the unsaved episode.
+    sent = []
+    cut = SimpleNamespace(num_episodes=2, root=tmp, push_to_hub=lambda: sent.append((tmp / LABELS).read_text()))
+    (tmp / LABELS).write_text("episode_index,result\n0,pass\n1,fail\n2,pass\n")
+    current.clear()
+    state.update(target=1)  # one pass already saved, so record_loop returns right after installing the upload fix
+    record_loop(robot=SimpleNamespace(cameras={}), dataset=cut, events=events, control_time_s=1)
+    cut.push_to_hub()
+    assert sent == ["episode_index,result\n0,pass\n1,fail\n"]
     shutil.rmtree(tmp)
     print("selftest OK")
 
