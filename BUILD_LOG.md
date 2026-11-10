@@ -1,91 +1,94 @@
 # Build log
 
-Dated engineering notes from building two SO-101 arms and getting them ready for π0.5. I keep what I measured separate from what I assumed, and I keep the mistakes in.
+My notes from building two SO-101 robot arms and getting them ready to learn a task with π0.5, in the order it happened. I've left the mistakes in, because that's where I learned the most.
 
-I built, wired, measured and operated the arms myself. [Claude Code](https://claude.com/claude-code), an AI coding assistant, helped me read the LeRobot source, write diagnostic scripts and keep these notes.
+I did the building, wiring and testing myself. I used [Claude Code](https://claude.com/claude-code), an AI coding assistant, to help me read the LeRobot source, write diagnostic scripts and keep these notes.
 
-## October 3–5: first prints and fit tests
+## October 3–5: first prints
 
-- Printed the controller mount on a Bambu P1S. The board's brass spacers wouldn't go into the printed holes.
-- Changed only the four hole sizes. +0.6 mm was too loose and the spacers slid out; +0.2 mm total gave a snug fit. Outer size and hole spacing stayed the same.
-- Printed the leader handle upright instead of on its side, so support material wouldn't scar the grip surface.
-- Installed LeRobot 0.6.2 from source. Before touching hardware, I checked the imports, CPU and Apple GPU (MPS), and video encoding and decoding.
+I started by printing the mount for the motor controller board on my Bambu P1S. The board's brass spacers wouldn't go into the printed holes, so I widened just those four holes. My first try (+0.6 mm) was so loose the spacers slid out. +0.2 mm was snug.
 
-## October 11–12: printing and motor bring-up
+I printed the leader arm's handle standing up instead of on its side, so the support material wouldn't leave marks on the part you hold.
+
+I also installed LeRobot, Hugging Face's robotics library, and made sure it could use my Mac's GPU and handle video before I touched any hardware.
+
+## October 11–12: printing and motors
 
 <img src="media/2026-10-12-motor-setup-bench.jpg" alt="Desk with Feetech STS3215 servo boxes, printed arm parts, a power supply and the Waveshare servo controller board" width="360">
 
-- Printed the remaining 15 of the 23 structural parts on four plates. I checked the slicer project against the official part list, so there were no missing or duplicate parts.
-- Matched the 12 servos to the bill of materials from their box labels: 7× C001 (1:345 gearing), 2× C044 (1:191) and 3× C046 (1:147). The follower uses six C001s. The leader mixes all three, so the hand-held arm is easy to move.
-- Checked the controller board's jumpers for USB control. Confirmed from its documentation that it has no voltage regulator, so the servos get whatever the supply puts out.
-- Measured the 5 V / 4 A supply with a multimeter: **5.5 V unloaded**, center-positive.
-- Set the follower's motor IDs one motor at a time, from 6 down to 1, switching DC power off for every swap. The first try failed with "motor not found": USB powers the board's chip, but not the servos.
+I printed the other 15 parts on four plates, checking against the official parts list so nothing was missing or doubled up.
 
-## October 15: leader IDs and an intermittent USB error
+The two arms use 12 servo motors, and they aren't all the same. The follower uses six with the strongest gearing. The leader, which I move by hand, mixes three gear ratios so it's easy to push around. I sorted them by the labels on their boxes.
+
+Before plugging anything in, I measured the power supply with a multimeter. It read 5.5 V with nothing connected, and the controller board doesn't regulate voltage, so that's exactly what the motors get.
+
+Each motor needs its own ID, set one motor at a time. My first try failed with "motor not found" because I'd only plugged in USB. USB powers the board, but the motors need the separate power supply.
+
+## October 15: a USB error I almost blamed on the wrong thing
 
 <img src="media/2026-10-15-shoulder-assembly.jpg" alt="Close-up of the SO-101 shoulder joint and upper arm mounted on its printed base" width="320">
 
-- Leader setup stopped with `termios.error: Device not configured` during a motor scan. A new USB cable was the suspect.
-- Tested the cable before blaming it. On the same board, motor, power and port, both cables passed **50 of 50** ping and model reads with zero errors. The error hasn't come back.
-- Finished the leader's IDs with a guarded routine. It refuses to write unless exactly one motor answers at ID 1, then reads back the stored ID and baud rate (**20 of 20** checks for the wrist roll).
+While I was setting up the leader's motors, the program crashed with a "device not configured" error. I'd just switched to a new USB cable and assumed that was the problem. Before throwing it out, I tested both cables on the same setup, and each one passed 50 out of 50 reads. The cable was fine, and the error hasn't come back.
 
-## October 18–19: assembly, bus checks, first teleoperation
+For the rest of the leader's IDs, I used a small routine that refuses to change anything unless exactly one motor answers, then reads the new ID back to make sure it stuck.
 
-- Assembled and wired both arms. The first full scan of the follower missed motor 5. After reseating, both arms returned IDs 1–6 in **3 of 3** read-only scans.
-- The leader's handle didn't slide into its mount. I widened only the slot in CAD, by 1 mm total, kept the outer shape, and checked the result with cross-sections before reprinting.
-- First teleoperation ran at 10 Hz with a 1° step limit I'd added. On shutdown the follower's elbow reported **Overload**, and at startup the wrist turned without the leader moving. A register read of all 12 motors afterwards showed torque off and no fault flags.
-- Traced the startup motion in the source: the follower turned its motors on before setting their target positions, so stale targets could run. Patched it locally to set targets first and enable torque last. Also made shutdown try every motor and always close the port, instead of stopping at the first error. Both bugs were reproduced in tests before the fix; afterwards **51 focused tests passed**.
-- My step limit made following slow and filled the log with warnings. Lesson: start with the official command and change one thing at a time. With the standard command: **59.5 Hz over 95.5 s**, 0 of 5,680 loop ticks over budget, clean shutdown.
+## October 18–19: assembly and first teleoperation
+
+I assembled and wired both arms. The first scan missed one of the follower's motors, and after I reseated its cable, both arms found all six motors every time.
+
+The leader's handle didn't fit into its mount, so I widened the slot by 1 mm in CAD and reprinted it.
+
+The first teleoperation, where I move the leader and the follower copies it, was rough. The follower moved slowly, the elbow motor reported an overload when I shut it down, and at startup the wrist moved on its own.
+
+I traced the startup movement to LeRobot's code. It switched the motors on before telling them where to be, so they could jump toward an old target. I changed the order locally, and I fixed shutdown so it releases every motor even if one of them throws an error. I wrote tests that reproduced both bugs before I fixed them.
+
+The slowness was my own fault. I'd added a speed limit as a "safety" measure, and all it did was make the follower lag and fill the screen with warnings. With the official command and no changes, it ran smoothly at about 60 updates a second. Lesson learned: start with the standard setup and change one thing at a time.
 
 ![Animated: leader and follower arms on a desk; the follower copies the leader's motion](media/2026-10-19-first-teleop.gif)
 
-*First teleoperation: I move the leader arm (right) and the follower (left) copies it. [Full 16 s clip (MP4)](https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-10-19-first-teleop.mp4).*
+*First teleoperation: I move the leader arm (right) and the follower (left) copies it. [Full clip (MP4)](https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-10-19-first-teleop.mp4).*
 
-## October 30: restart check
+## October 30: picking it back up
 
-- Before running, I did a read-only check of all 12 motors: torque 0, status 0, and the calibration stored in each motor matched the saved files.
-- The first start failed once with `No status packet` on the gripper. A read-only recheck passed 10 of 10, and the unchanged command then ran at 60 Hz.
+After a week and a half away, I checked all 12 motors before running anything. No faults, and the calibration stored in each motor still matched. The first start failed once with a communication error on the gripper, and running the same command again worked.
 
 ## November 4–8: camera mounts
 
 <img src="media/2026-11-08-camera-stand.jpg" alt="Printed overhead camera tower with an InnoMaker camera board on top, next to the follower arm with its wrist camera" width="360">
 
-- Printed the official overhead camera stand (4 parts, about 6 hours) and the wrist camera mount, which replaces the follower's wrist part.
-- Compared six print orientations for the wrist mount on surface finish, support contact and strength before slicing.
-- The first attempt at the stand's second plate failed because the first layer didn't stick. The retry finished.
+I printed the official overhead camera stand (about 6 hours) and a wrist camera mount that replaces part of the follower's wrist. For the wrist mount, I compared six print orientations for finish, supports and strength before picking one. One plate of the stand failed when the first layer didn't stick, and the reprint came out fine.
 
-## November 6: π0.5 plan and Mac timing
+## November 6: can my Mac run π0.5?
 
-- Timed π0.5 on my M3 Max: **0.64 s per 50-action chunk**, using 9.2 GiB in bfloat16. That's the model alone on random weights, so real runs will be slower. Real-time chunking took 0.66 s per chunk.
-- Checked that every record, train and rollout command in the [runbook](RUNBOOK.md) parses against LeRobot 0.6.2.
+I timed π0.5 on my M3 Max MacBook. It took about 0.64 seconds to plan the next 1.7 seconds of motion, so the Mac should be able to keep up. That was the bare model with random weights, so real runs will be a little slower.
 
 ## November 8: calibration root cause and cameras
 
-### The follower sat a few degrees left of the leader
+### The follower sat a few degrees off the leader
 
-- Recalibrated both arms, and the offset was still there. I had to redo the leader once: its saved gripper range was 2045–2047, so I hadn't moved the gripper during the sweep. Checking the saved file caught it.
-- Read the source to see how a joint's angle is computed: `(raw − middle of recorded range) × 360 / 4095`. **Zero is the middle of your calibration sweep, not the pose you hold at the start.** The base has no hard stops, so how far I swung it each way set its zero, and that differed between the arms. The follower's middle was 1978 and the leader's was 1894.5, about 7° apart.
-- Shifted the leader's base range by +84 steps so the middles match. I changed the passive leader only, so the follower's motion limits are untouched, and kept a backup of every file.
-- Verified with a read-only script, both arms posed the same way by hand: the base angles were **0.48°** apart, where the old numbers would have given about 7°.
-- The wrist flex had the same problem: **21.67°** apart. I shifted the leader's range by −246 steps and re-measured **0.04°**.
-- One thing still doesn't fully add up: the October files predicted an offset in the opposite direction from the one I saw. So I treated the shift as a test and measured the result rather than assuming it worked.
+Even after I recalibrated both arms, the follower's base sat a few degrees to the left of the leader's. I also had to redo the leader once, because I'd forgotten to move the gripper during calibration. Checking the saved file caught it.
+
+Reading LeRobot's source explained the offset. A joint's zero isn't the pose you hold at the start of calibration. It's the middle of the range you sweep through. The base can turn a long way in both directions, so how far I happened to swing it each way set its zero, and I'd swung the two arms differently. Their middles were about 7° apart.
+
+I shifted the leader's saved range so the two middles matched, kept a backup, and left the follower's limits alone. Then I posed both arms the same way by hand and measured them: under half a degree apart. The wrist had the same problem, about 22° off, and after the same fix it was within a tenth of a degree.
 
 ### Cameras
 
-| Overhead camera (index 0) | Wrist camera (index 1) |
+| Overhead camera | Wrist camera |
 | --- | --- |
 | ![Robot's overhead camera view: the desk, an open toolkit and the follower arm at the bottom edge](media/2026-11-08-robot-view-overhead.jpg) | ![Robot's wrist camera view: the gripper jaws at the bottom with the desk ahead](media/2026-11-08-robot-view-wrist.jpg) |
 
-- macOS found 0 cameras at first because the terminal didn't have camera permission.
-- The first run with both camera feeds stopped after 19.8 s: a frame from one camera was more than 500 ms old. Both cameras share one USB 2 hub, because the Mac has no USB-A ports.
-- I tried compressed video (MJPG). A later test showed macOS ignores that setting, so it wasn't the fix, and I corrected my notes. The stall hasn't come back. A 15 s camera-only test gave 29.6 and 29.5 fps, with a worst frame gap of 67 ms, and teleoperation with both feeds ran for over 3 minutes. *Correction, later the same evening: the stall hadn't gone away, and it wasn't the hub's bandwidth. The wrist camera was physically disconnecting; see "Camera dropouts" below.*
-- Looking at the saved frames showed the camera names were swapped: index 0 is the overhead camera, index 1 the wrist. I fixed the config before recording any data. Training on swapped camera names would have taught the model the wrong views.
+At first my Mac found no cameras at all, because the terminal didn't have permission to use them.
+
+Then the first run with both cameras stopped after 20 seconds because one feed went stale. Both cameras share one USB hub, so I blamed bandwidth and tried a compressed video setting. It turned out macOS ignores that setting, so it couldn't have been the fix. I found the real cause later that evening (below).
+
+Looking at saved frames also showed the two cameras were labeled backwards. I fixed that before recording anything. Training with the views swapped would have taught the model the wrong thing.
 
 ![Animated: teleoperation with the Rerun viewer on the laptop showing both camera feeds and live joint plots](media/2026-11-08-teleop-with-cameras.gif)
 
-*Teleoperation with both camera feeds and live joint plots in Rerun. [Full 11 s clip (MP4)](https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-teleop-with-cameras.mp4).*
+*Teleoperation with both camera feeds and live joint plots on the laptop. [Full clip (MP4)](https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-teleop-with-cameras.mp4).*
 
-## November 8 (evening): recording the demonstrations
+## November 8 (evening): recording demonstrations
 
 ### Data collection
 
@@ -101,41 +104,37 @@ I built, wired, measured and operated the arms myself. [Claude Code](https://cla
     <td align="center"><img src="media/2026-11-08-first-replay.gif" height="240" alt="Animated: the follower arm moves through a recorded episode by itself"></td>
   </tr>
   <tr>
-    <td><sub>I drive the leader; the follower puts a bit strip into the toolbox. <a href="https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-data-collection.mp4">MP4, 9 s</a></sub></td>
-    <td><sub>Cancel, record, then save as passed (GIF at 2× speed). <a href="https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-recording-page.mp4">MP4, 43 s, real time</a></sub></td>
-    <td><sub><code>lerobot-replay</code> of a recorded test episode. <a href="https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-first-replay.mp4">MP4, 25 s</a></sub></td>
+    <td><sub>I move the leader arm and the follower puts a bit strip in the toolbox. <a href="https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-data-collection.mp4">MP4</a></sub></td>
+    <td><sub>The recording page, sped up 2×. <a href="https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-recording-page.mp4">MP4</a></sub></td>
+    <td><sub>Replaying a recorded take. <a href="https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-first-replay.mp4">MP4</a></sub></td>
   </tr>
 </table>
 
-The replay is the first time the follower moved without me driving it. It plays back the recorded joint motions without looking at the cameras, and I'd moved the toolbox since recording, so it goes through the motions without picking anything up. A trained policy is the next step.
+The replay was the first time the follower moved without me driving it. It just repeats the recorded joint motions without looking at the cameras, and I'd moved the toolbox since recording, so it goes through the motions without picking anything up. Getting it to actually do the task is π0.5's job.
 
 ### A recording page instead of keyboard shortcuts
 
-- Plain `lerobot-record` has three keys: end the episode, re-record it, and stop. It can't wait for me to start an episode, or label an attempt passed or failed, and its keys are read system-wide through macOS Accessibility, so a launcher can't simply type them for me. Its timed reset pause also got in the way: I lost a complete 60-second episode by pressing Ctrl+C during that pause, because LeRobot saves an episode only after it.
-- I built [`tools/record_ui.py`](tools/record_ui.py). It runs LeRobot's own `record()` unchanged and swaps two things at runtime: the keyboard listener and the per-episode loop. A local page shows both cameras and the state: **A** start, **B** pass, **C** fail, **D** cancel. Passed and failed episodes are both saved, with a label in `episode_labels.csv`. Cancelled ones are discarded through LeRobot's own re-record path, which also cancels that episode's video encoding.
-- `--dataset.num_episodes` counts passes only, and the count carries over between sessions, so after Ctrl+C the same command picks up where it left off.
-- Before using it on the arm I had the launcher reviewed independently against LeRobot's source. That found three real bugs: resuming would have crashed, because LeRobot's `resume()` needs the dataset folder passed explicitly; a label could be written for an episode whose save was cut off by Ctrl+C; and the list of failed episodes to skip covered only the current session. I fixed all three and added each case to a self-test that runs without the robot.
-- Smaller things it handles: LeRobot adds a date-time stamp to every new dataset name unless `--dataset.no_stamp=true`, and refuses to create a dataset in a folder an interrupted run left behind.
+LeRobot's recorder is controlled with keyboard shortcuts, and they didn't fit how I wanted to work. I couldn't start a take when I was ready, or mark it as a pass or a fail. Stopping at the wrong moment could also lose a take: I lost a full one-minute take by pressing Ctrl+C during its reset pause.
+
+So I built a small [recording page](tools/record_ui.py) around LeRobot's own recorder. It shows both cameras, and four keys start a take, mark it passed, mark it failed, or throw it away. Failed takes are kept with a label, since they're data too. Only passes count toward the goal, and it picks up where I left off if I stop and restart.
+
+Before I used it on the robot, I had the code reviewed independently against LeRobot's source. That caught three real bugs, including one that would have crashed when resuming a session. I fixed them and added each case to a test that runs without the robot.
 
 ### Camera dropouts: the real cause
 
-- Recording kept stopping with `OpenCVCamera(1) latest frame is too old`. That only says the wrist camera sent nothing for half a second.
-- The macOS kernel log said more: `hardware connection lost` for the wrist camera, then a re-enumeration about 30 ms later, at the same second each run stopped. Because the camera comes back so fast, it always looks connected.
-- I counted the events per USB port: **193 disconnects of the wrist camera in one evening against 1 for the overhead camera** on the same hub, and 2,857 USB transaction errors against 2. The servo board on that hub never dropped by itself.
-- That rules out software and the hub as a whole: drops started before any LeRobot command, happened during calibration when no program had the cameras open, and continued with nothing running. It also rules out USB bandwidth: OpenCV runs 640×480 MJPEG at 30 fps, and the idle-time errors were on the control endpoints, not the video endpoint. My earlier bandwidth explanation was wrong.
-- The remaining suspects are the wrist camera's cable or plug, which flex with the arm, its hub port, or the camera board. A test session of about 6 minutes had no drops, but it dropped again soon after, so this is still open.
-- I decided against adding an automatic camera reconnect: it couldn't save an episode the drop interrupted, and it would hide the fault.
+Recording kept stopping with "latest frame is too old", which just means the wrist camera didn't send anything for half a second.
 
-### Reviewing my own data
+The macOS system log told the real story. The wrist camera was physically disconnecting and reconnecting about 30 milliseconds later, at the exact moment each recording stopped. It came back so fast that it always looked connected. Over one evening it disconnected 193 times. The overhead camera, on the same hub, disconnected once.
 
-- I recorded 5 test passes, then checked all 8 test episodes (5 passes, 3 fails): 8 sampled frames per camera, plus joint ranges and leader–follower tracking error.
-- All 5 passes were complete. Two "failed" episodes weren't attempts at all: 5 s and 1 s long, with under 0.2° of joint motion. That's why the page now has Cancel.
-- The review also caught problems in the scene: my hand entering the overhead view at the end of most episodes, my laptop screen in the corner of the overhead view (its content changes between episodes, which a policy can latch onto), a dark image, and orange scraps that look like the bit strips. I fixed the scene before the real recording. The overhead camera and the toolbox now stay put; only the tools move between episodes.
+That ruled out my code, since it happened even with nothing running. It also ruled out bandwidth, so my earlier theory was wrong. The problem is the wrist camera's cable or plug (which flexes as the arm moves), its port, or the camera itself. I decided not to add an automatic reconnect, because it would hide the problem without saving the take that got interrupted.
 
-### Where it stands
+### Checking my own data
 
-- As of November 8 the real dataset has **21 episodes: 19 passed, 2 failed**, uploaded privately to Hugging Face at the end of that session. 50 passes is the target.
-- The wrist camera fault isn't fixed yet.
+Before the real recording, I did 8 test takes and went through each one, looking at frames from both cameras and at the joint data.
+
+Two of the "failed" takes weren't attempts at all, just one to five seconds of nothing, which is why the page now has a throw-away key. The frames also showed problems with the scene: my hand reaching into the overhead view, my laptop screen in the corner (its content changes between takes, which the model could latch onto), a dark image, and orange scraps that looked like the tools. I cleaned all of that up, and from then on only the tools moved between takes.
+
+By the end of the night I had 21 real takes: 19 good and 2 failed.
 
 ## November 9: 50 demonstrations, then training
 
