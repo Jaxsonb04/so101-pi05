@@ -1,8 +1,8 @@
 <h1 align="center">SO-101 → π0.5 → voice commands</h1>
 
 <p align="center">
-  Two 3D-printed robot arms, taught a real task from my own demonstrations.<br>
-  The goal: say <i>"put the tools in the toolbox"</i> and have the arm do it.
+  I built two robot arms and I'm teaching one of them to put my tools away.<br>
+  The goal: say <i>"put the tools in the toolbox"</i> and watch it happen.
 </p>
 
 <p align="center">
@@ -12,35 +12,33 @@
 <p align="center">
   <a href="#status">Status</a> ·
   <a href="#recording-demonstrations">Recording</a> ·
-  <a href="#test-and-integration-highlights">Highlights</a> ·
+  <a href="#problems-i-ran-into">Problems I ran into</a> ·
   <a href="#the-build">The build</a> ·
   <a href="BUILD_LOG.md">Build log</a> ·
   <a href="RUNBOOK.md">Runbook</a>
 </p>
 
-I printed, wired and calibrated a pair of [SO-101](https://github.com/TheRobotStudio/SO-ARM100) arms, integrated two cameras and built a recording workflow, then recorded 50 demonstrations. Now I'm fine-tuning Physical Intelligence's [π0.5](https://www.physicalintelligence.company/blog/pi05), an open vision-language-action model, on them with [Hugging Face LeRobot](https://github.com/huggingface/lerobot).
+I 3D-printed and put together a pair of [SO-101](https://github.com/TheRobotStudio/SO-ARM100) arms, added two cameras, and recorded 50 demonstrations of the task by steering one arm with the other. Now I'm fine-tuning [π0.5](https://www.physicalintelligence.company/blog/pi05), an open robot model from Physical Intelligence, on those recordings using [Hugging Face LeRobot](https://github.com/huggingface/lerobot). Next, the arm tries it on its own.
 
 ## Status
 
-As of November 9, 2026.
+Updated November 9, 2026.
 
-| Stage | Status | Evidence |
-| --- | --- | --- |
-| Print 23 parts and both camera mounts | ✅ Done | Bambu P1S; two parts revised for fit |
-| Set up 12 servos | ✅ Done | Each ID read back; both arms answer IDs 1–6 in 3 of 3 scans |
-| Assemble and wire both arms | ✅ Done | Full-bus scans and register checks with torque off |
-| Calibrate and align | ✅ Done | Base 0.48° and wrist 0.04° apart when posed the same |
-| Teleoperation | ✅ Done | 59.5 Hz over 95.5 s, 0 of 5,680 ticks over budget |
-| Cameras | ✅ Done | Wrist and overhead, about 30 fps each |
-| Recording workflow | ✅ Done | Start, pass, fail and cancel page; self-test passes |
-| First replay | ✅ Done | The follower replays a recorded episode on its own |
-| Record 50 demonstrations | ✅ Done | 50 passed plus 2 failed, all 52 reviewed; private dataset |
-| Fine-tune π0.5 | 🔄 Training | One H200 on Hugging Face Jobs, 7,000 steps, about $23 |
-| Autonomous runs | ⏳ Next | 20 scored trials, then checkpoint comparison |
-| Voice commands | ⏳ Planned | Speech-to-text picks the trained task sentence |
+| Step | Status |
+| --- | --- |
+| Print, wire and assemble both arms | ✅ Done |
+| Calibrate and teleoperate | ✅ Done |
+| Add wrist and overhead cameras | ✅ Done |
+| Build a tool for recording demonstrations | ✅ Done |
+| Record 50 demonstrations | ✅ Done |
+| Fine-tune π0.5 | 🔄 Training now |
+| Run it on the arm and score it | ⏳ Next |
+| Voice commands | ⏳ Later |
+
+The trained model hasn't touched the arm yet. I'll post the results here, good or bad.
 
 > [!NOTE]
-> **Open issue:** the wrist camera keeps dropping off USB for about 30 ms at a time, which stops a recording. The system log points at its cable, plug or hub port. Saved episodes survive, and the recorder picks up where it left off.
+> The wrist camera still drops off USB every so often. I've narrowed it down to that camera's cable or port, but haven't fixed it yet.
 
 ## Recording demonstrations
 
@@ -56,26 +54,27 @@ As of November 9, 2026.
     <td align="center"><img src="media/2026-11-08-first-replay.gif" height="240" alt="Animated: the follower arm moves through a recorded episode by itself"></td>
   </tr>
   <tr>
-    <td><sub>I drive the leader; the follower puts a bit strip into the toolbox. <a href="https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-data-collection.mp4">MP4</a></sub></td>
-    <td><sub>Cancel, record, then save as passed (GIF at 2× speed). <a href="https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-recording-page.mp4">MP4</a></sub></td>
-    <td><sub>The follower plays back a recorded episode. It doesn't use the cameras yet; that's π0.5's job. <a href="https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-first-replay.mp4">MP4</a></sub></td>
+    <td><sub>I move the leader arm and the follower copies it. <a href="https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-data-collection.mp4">MP4</a></sub></td>
+    <td><sub>The recording page, sped up 2×. <a href="https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-recording-page.mp4">MP4</a></sub></td>
+    <td><sub>Replaying a recording. It just repeats the motions and doesn't look at the cameras yet. <a href="https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-08-first-replay.mp4">MP4</a></sub></td>
   </tr>
 </table>
 
-The [recording page](tools/record_ui.py) wraps LeRobot's own recorder: **A** start, **B** pass, **C** fail, **D** cancel, with both camera feeds. Failed attempts are kept with a label, and the pass count carries over between sessions. Commands are in the [runbook](RUNBOOK.md#4-record-demonstrations).
+LeRobot's recorder is driven by keyboard shortcuts, which got in the way, so I wrote a small [recording page](tools/record_ui.py) on top of it. One key starts a take, and the others mark it as a pass, a fail or a do-over. It also remembers where I left off, so I could spread the recording over two evenings. The commands are in the [runbook](RUNBOOK.md#4-record-demonstrations).
 
-## Test and integration highlights
+## Problems I ran into
 
-How I found each problem, isolated it and proved the fix. The full detail is in the [build log](BUILD_LOG.md).
+The full story is in the [build log](BUILD_LOG.md). These are the ones I learned the most from.
 
-- **Camera fault traced in the system log.** Recording kept stopping with "latest frame is too old". The macOS kernel log showed the wrist camera physically disconnecting at those moments: 193 times in one evening, against once for the overhead camera on the same hub. That ruled out software, the hub and my first theory, USB bandwidth.
-- **A recorder built around LeRobot, not inside it.** I wrapped LeRobot's own `record()` with a start, pass, fail and cancel page that keeps failed attempts with labels. An independent review against LeRobot's source found three bugs before first use; each fix has a self-test case.
-- **A cloud model my Mac couldn't load, caught before the arm.** The cloud training image had moved to a newer LeRobot the same day. A 20-step smoke test and a check of the saved files found 437 of 813 weight names my Mac's version wouldn't recognize. The job now installs the Mac's exact LeRobot and `transformers` before training, and the new smoke model matches all 813.
-- **Reviewing my own data first.** Before the real 50, I checked all 8 test episodes from sampled frames and joint data. That caught false starts, my hand and laptop screen in the overhead view, and look-alike objects on the table. I fixed the scene before recording. Then I reviewed all 52 real episodes: every pass ends with all three tools in the box, and a frame-by-frame scan found no joint glitches.
-- **Calibration offset traced to its root cause.** LeRobot puts each joint's zero at the middle of the calibration sweep, not at the reference pose. I matched the two arms' middles and measured 0.48° on the base and 0.04° on the wrist.
-- **A startup bug found and covered by tests.** Torque was enabled before target positions were set, so stale targets could move the arm. I fixed the order and made shutdown release every motor even after an error; 51 focused tests pass.
-- **Evidence before blame.** A USB error pointed at a new cable. On the same board, motor and port, both cables passed 50 of 50 reads, so I kept it.
-- **Correcting my own mistakes.** A "safety" step limit made teleoperation slow and noisy, a video setting I'd credited did nothing, my USB-bandwidth theory was wrong, and a fast video seek in my data review landed on the wrong frames. Each one is corrected in the log.
+**The wrist camera kept cutting out.** Recording would stop with "latest frame is too old", and I assumed it was USB bandwidth. The macOS system log said otherwise: the wrist camera was physically disconnecting, nearly 200 times in one evening, while the overhead camera on the same hub barely did. So it's that camera's cable or port, not my code.
+
+**My cloud-trained model wouldn't have loaded.** I train in the cloud on Hugging Face, and their training image had moved to a newer LeRobot that same day. I ran a short test job before paying for the real one and checked whether my Mac could load the result. It couldn't: about half the weights had been renamed between versions. Making the cloud job install the exact versions I run locally fixed it.
+
+**The arms didn't line up.** Even after recalibrating, the follower always sat a few degrees off from the leader. Reading LeRobot's source showed why: a joint's zero is the middle of whatever range you sweep during calibration, and I'd swept the two arms differently. Matching them took the gap from about 7° to under half a degree.
+
+**The arm could lurch on startup.** The follower switched its motors on before telling them where to be, so it could jump toward an old target. I fixed the order and wrote tests that reproduced the bug first.
+
+**I checked my own data before trusting it.** A few test recordings caught my hand and my laptop screen in the camera view, so I cleaned up the scene before the real 50. Reviewing those 50 also caught a bug in my own review script, which had been grabbing the wrong video frames.
 
 ## The build
 
@@ -107,37 +106,25 @@ How I found each problem, isolated it and proved the fix. The full detail is in 
   </tr>
 </table>
 
-| Part | Details |
+| Part | What I used |
 | --- | --- |
-| Arms | One leader (moved by hand) and one follower (copies it), printed in PLA+ |
-| Motors | 12 Feetech STS3215. The follower uses 1:345 gearing; the leader mixes 1:191, 1:345 and 1:147 so it's easy to move by hand |
-| Controllers | 2 Waveshare Bus Servo Adapter (A), 5 V supplies checked with a multimeter |
-| Cameras | 2 InnoMaker 32×32 mm USB boards, wrist and overhead, 640×480 at 30 fps |
-| Software | LeRobot 0.6.2 on an M3 Max MacBook, plus my [recording tools](tools/) |
+| Arms | Two SO-101s printed in PLA+: a leader I move by hand and a follower that copies it |
+| Motors | 12 Feetech STS3215 servos |
+| Controllers | 2 Waveshare servo boards |
+| Cameras | 2 small USB cameras, one on the wrist and one overhead |
+| Software | LeRobot on a MacBook Pro (M3 Max), plus my own [recording tools](tools/) |
 
 ## How it learns the task
 
-1. **Teleoperate:** I move the leader and the follower copies it.
-2. **Record:** each episode saves both camera videos, the joint angles, the task sentence and my pass or fail label.
-3. **Fine-tune:** start from `pi05_base` and train on the passed episodes on a cloud H200.
-4. **Run:** the Mac runs the trained model on the arm, with real-time chunking for smooth motion.
-5. **Measure:** 20 scored trials. I'll publish the success rate and what went wrong.
-6. **Voice:** speech-to-text on the Mac turns what I say into the task sentence. π0.5 only does tasks it has practised, so each new task gets its own demonstrations.
+1. I steer the follower with the leader arm to show it the task.
+2. Each recording saves both camera videos, the arm's joint angles, and whether the attempt worked.
+3. π0.5 is fine-tuned on the successful recordings in the cloud.
+4. The trained model runs on my Mac and drives the arm.
+5. I run 20 trials and publish the success rate, failures included.
+6. Then voice: speech-to-text turns what I say into the task.
 
 Every command is in the [runbook](RUNBOOK.md).
 
-## Measured so far
-
-- **π0.5 on an M3 Max:** 0.64 s per 50-action chunk, using 9.2 GiB in bfloat16. A chunk covers 1.67 s of motion at 30 fps, so the Mac keeps up on paper. This timed the model alone on random weights.
-- **Real-time chunking:** 0.66 s per chunk, using 9.3 GiB.
-- **Training:** 2.28 s per step at batch 32 on an H200. Training loss fell from 0.099 at step 200 to 0.020 at step 3,200 of 7,000. That only shows it's fitting my demonstrations; the arm decides whether it works.
-
-## Not tested yet
-
-- Anything with a trained π0.5 on the real arm
-- Loading the trained weights on the Mac and running them. So far only the smoke-test model's config and weight names are checked
-- A full recording session without a wrist-camera dropout
-
 ## Credits
 
-Arm design by [TheRobotStudio](https://github.com/TheRobotStudio/SO-ARM100). π0.5 by [Physical Intelligence](https://github.com/Physical-Intelligence/openpi). Robot software by [Hugging Face LeRobot](https://github.com/huggingface/lerobot). Claude Code helped with source reading, diagnostic scripts and notes; the build and every hands-on test are mine.
+Arm design by [TheRobotStudio](https://github.com/TheRobotStudio/SO-ARM100). π0.5 by [Physical Intelligence](https://github.com/Physical-Intelligence/openpi). Robot software by [Hugging Face LeRobot](https://github.com/huggingface/lerobot). I used Claude Code to help read the LeRobot source, write diagnostic scripts and keep notes. The build and the hands-on testing are mine.
