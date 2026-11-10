@@ -1,6 +1,6 @@
 # Runbook: SO-101 + π0.5
 
-Work from top to bottom. The flags were checked against LeRobot 0.6.2. Steps 1–4 (access, hardware, cameras, recording and replay) have been run on the arm; training and everything after it haven't yet.
+Work from top to bottom. The flags were checked against LeRobot 0.6.2. Steps 1–4 (access, hardware, cameras, recording and replay) have been run on the arm, and step 5's smoke test and full training run have been run in the cloud. Step 6 onward hasn't been run yet.
 
 ## Before you start
 
@@ -28,7 +28,7 @@ No hardware is needed for this step.
 
 1. Create a token with **Write** access at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
 2. Accept the license at [google/paligemma-3b-pt-224](https://huggingface.co/google/paligemma-3b-pt-224). π0.5 can't load its tokenizer without this.
-3. Add credit at [huggingface.co/settings/billing](https://huggingface.co/settings/billing). Jobs need a positive balance. About $20 covers the plan below.
+3. Add credit at [huggingface.co/settings/billing](https://huggingface.co/settings/billing). Jobs need a positive balance. About $25 covers a smoke test and one full training run.
 4. Log in:
 
 ```bash
@@ -121,49 +121,42 @@ If you use plain `lerobot-record` instead, add `--dataset.no_stamp=true`, and do
 
 ## 5. Fine-tune π0.5
 
-This can't run on the Mac. It runs on a cloud A100 at $2.50 an hour, and the timeout caps the spend.
+This can't run on the Mac. It runs on a cloud H200 through Hugging Face Jobs at $5 an hour, and the timeout caps the spend. In my smoke tests the H200 took 2.28 s per step against the A100's 5.17 s, at twice the price, so it was slightly cheaper per step (the two runs used different software versions, so treat that as rough).
 
-If some recorded episodes failed, add the `--dataset.exclude_episodes="[...]"` flag the recording page printed to both commands below, so training uses passed episodes only. If the smoke test rejects that flag (the cloud image can differ from LeRobot 0.6.2), make a pass-only copy with `lerobot-edit-dataset --operation.type delete_episodes`, creating its repo as private first, and train on that.
+**Don't use `lerobot-train --job.target=...` from LeRobot 0.6.2.** It uploads your settings as a config file and trains in `huggingface/lerobot-gpu:latest`, which follows upstream LeRobot. On November 9 that image had moved to 0.7.1: the first job rejected the config, and a model trained on the newer image wouldn't load on the Mac (437 of 813 weight names differed). The command below starts the same image, installs the Mac's exact LeRobot commit and `transformers` version into it, prints the versions, then runs `lerobot-train` with your flags. Check your versions with `git -C lerobot rev-parse HEAD` and `pip show transformers`, and change both in the command if yours differ.
+
+Keep the `--dataset.exclude_episodes` flag the recording page printed (mine was `[2,12]`), so training uses passed episodes only.
 
 ### Smoke test
 
-This costs at most $1.25. It proves the cloud image, your dataset and checkpoint upload all work before you pay for the long run.
+Run the full-run command below with four changes: `--timeout 30m`, `--policy.repo_id=${POLICY}_smoke`, `--steps=20` and `--save_freq=20`. It costs under $1. It proves the image, your dataset and checkpoint upload all work before you pay for the long run.
+
+Then check that the smoke model's config loads on the Mac. An error here means the cloud trained with a different LeRobot version:
 
 ```bash
-lerobot-train \
-  --dataset.repo_id=$DATASET \
-  --policy.type=pi05 \
-  --policy.pretrained_path=lerobot/pi05_base \
-  --policy.repo_id=${POLICY}_smoke \
-  --policy.private=true \
-  --policy.empty_cameras=1 \
-  --policy.gradient_checkpointing=true \
-  --policy.dtype=bfloat16 \
-  --batch_size=32 \
-  --steps=20 \
-  --save_freq=20 \
-  --save_checkpoint_to_hub=true \
-  --output_dir=outputs/pi05_smoke \
-  --job_name=pi05_smoke \
-  --job.target=a100-large \
-  --job.timeout=30m
+python -c "from lerobot.configs.policies import PreTrainedConfig; print(PreTrainedConfig.from_pretrained('${POLICY}_smoke').type)"
 ```
 
-Read the seconds per step from the log, then multiply by 10,000. If that's over 6 hours, raise `--job.timeout` below. Each extra hour adds $2.50.
-
-Delete the smoke test model afterward:
+Read the seconds per step from the log (`hf jobs logs <job-id>`), then multiply by the full run's steps. If that's over 6 hours, raise `--timeout` below. Then delete the smoke model, which can't be undone:
 
 ```bash
-hf repo delete ${POLICY}_smoke
+hf repos delete ${POLICY}_smoke
 ```
 
 ### Full run
 
-This costs at most $15.
+7,000 steps at batch 32 is about 5 passes over my 50 demonstrations. This is a full fine-tune: the 141 GB H200 doesn't need the memory saving of training only the action expert, which LeRobot's docs say comes at some cost in success rate. Image augmentation is on, as in openpi's own training recipe. It saves a checkpoint at the halfway point and at the end, so you can compare them on the arm.
+
+It ran at 2.28 s per step, so about 4.5 hours and about $23. `--timeout 6h` caps it at $30.
 
 ```bash
-lerobot-train \
+hf jobs run --flavor h200 --timeout 6h --secrets HF_TOKEN --detach \
+  huggingface/lerobot-gpu:latest \
+  bash -c 'uv pip install --python /lerobot/.venv/bin/python "lerobot[pi] @ git+https://github.com/huggingface/lerobot@8c920c4270460851cedd2737657584586d3dc66f" "transformers==5.5.4" && python -c "import lerobot, transformers, torch; print(lerobot.__version__, transformers.__version__, torch.__version__)" && lerobot-train "$@"' _ \
   --dataset.repo_id=$DATASET \
+  --dataset.exclude_episodes="[2,12]" \
+  --dataset.image_transforms.enable=true \
+  --num_workers=8 \
   --policy.type=pi05 \
   --policy.pretrained_path=lerobot/pi05_base \
   --policy.repo_id=$POLICY \
@@ -172,16 +165,16 @@ lerobot-train \
   --policy.gradient_checkpointing=true \
   --policy.dtype=bfloat16 \
   --batch_size=32 \
-  --steps=10000 \
-  --save_freq=2500 \
+  --steps=7000 \
+  --save_freq=3500 \
   --save_checkpoint_to_hub=true \
   --output_dir=outputs/pi05_so101_tools_toolbox \
-  --job_name=pi05_so101_tools_toolbox \
-  --job.target=a100-large \
-  --job.timeout=6h
+  --job_name=pi05_so101_tools_toolbox
 ```
 
-Ctrl+C only detaches from the logs. The job keeps running and billing, so use these to watch or stop it:
+`--secrets HF_TOKEN` passes the token you logged in with as a hidden secret. Add `--dry-run` to see the exact job without submitting it.
+
+`--detach` prints the job ID and returns. The job keeps running and billing until it finishes, so use these to watch or stop it:
 
 ```bash
 hf jobs logs <job-id>
@@ -191,13 +184,9 @@ hf jobs logs <job-id>
 hf jobs cancel <job-id>
 ```
 
-`--save_checkpoint_to_hub=true` matters: without it, a job that hits its timeout loses everything. Each saved checkpoint includes optimizer state, so expect the model repo to get large. Delete what you don't need afterward.
+`--save_checkpoint_to_hub=true` matters: without it, a job that hits its timeout loses everything. Each checkpoint is about 24.5 GB on the Hub (9.4 GB model plus 15.1 GB optimizer state), so the run adds about 58 GB. Check your Hub storage limit first; mine is 100 GB for private repos. Once you've picked a checkpoint and don't need to resume, its optimizer state can go.
 
-If the job times out, resume it:
-
-```bash
-lerobot-train --config_path=$POLICY --resume=true --job.target=a100-large --job.timeout=6h
-```
+If the job times out, the saved checkpoints are under `checkpoints/` in the model repo. I haven't had to resume a run, so I haven't tested a resume command with this setup.
 
 ## 6. Run it on the arm
 
@@ -248,10 +237,10 @@ For each trial, write down where the tools were, how many ended up in the toolbo
 Then compare earlier checkpoints, because the last one isn't always the best. One published [SO-101 π0.5 run](https://huggingface.co/Project-IRA/TPSoSe2026_Pi05_LeRobot_SO101_Finetuning_V7_Full_V2) got its best real-arm results near step 8,000 and got worse after that. It was a different, much larger dataset, so treat that as a reason to check, not a prediction.
 
 ```bash
-hf download $POLICY --include "checkpoints/005000/pretrained_model/*" --local-dir outputs/ckpts
+hf download $POLICY --include "checkpoints/003500/pretrained_model/*" --local-dir outputs/ckpts
 ```
 
-Then use `--policy.path=outputs/ckpts/checkpoints/005000/pretrained_model` in the rollout command.
+Then use `--policy.path=outputs/ckpts/checkpoints/003500/pretrained_model` in the rollout command.
 
 ## 8. Voice commands
 
@@ -278,9 +267,9 @@ Version 1 needs no code: turn on macOS Dictation, type `/subtask `, dictate the 
 | macOS finds 0 cameras ("not authorized to capture video") | Allow your terminal app in System Settings → Privacy & Security → Camera, then quit and reopen it. |
 | `No status packet` at startup | Run the same command again. This cleared on retry here before. |
 | `Overload error` on a motor | Stop and cut DC power, then check for a jam or a pinched cable. The elbow did this once and the cause was never found. |
-| The smoke test fails on a config key | The cloud image doesn't match your LeRobot version. Compare your version with the image, or pin one with `--job.image`. |
-| The checkpoint won't load on the Mac | Same cause. The cloud image may be newer than your LeRobot 0.6.2. |
-| The job timed out before finishing | Resume it as shown in step 5. The saved checkpoints are under `checkpoints/` in the model repo. |
+| `` `ema`: Could not decode the value `` (or another config key) when a cloud job starts | The cloud image runs a newer LeRobot than your Mac. Submit with the pinned `hf jobs run` command in step 5. |
+| `The fields optimizer_fused are not valid for PI05Config`, or weight names with `vision_tower.embeddings` instead of `vision_tower.vision_model.embeddings` | The model was trained with a newer LeRobot and `transformers` than the Mac's. Retrain with the pinned command in step 5. |
+| The job timed out before finishing | The saved checkpoints are under `checkpoints/` in the model repo. Resuming isn't tested with this setup (step 5). |
 
 ## References
 
