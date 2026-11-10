@@ -18,11 +18,11 @@
   <a href="RUNBOOK.md">Runbook</a>
 </p>
 
-I printed, wired and calibrated a pair of [SO-101](https://github.com/TheRobotStudio/SO-ARM100) arms, integrated two cameras and built a recording workflow. Now I'm recording demonstrations to fine-tune Physical Intelligence's [π0.5](https://www.physicalintelligence.company/blog/pi05), an open vision-language-action model, with [Hugging Face LeRobot](https://github.com/huggingface/lerobot).
+I printed, wired and calibrated a pair of [SO-101](https://github.com/TheRobotStudio/SO-ARM100) arms, integrated two cameras and built a recording workflow, then recorded 50 demonstrations. Now I'm fine-tuning Physical Intelligence's [π0.5](https://www.physicalintelligence.company/blog/pi05), an open vision-language-action model, on them with [Hugging Face LeRobot](https://github.com/huggingface/lerobot).
 
 ## Status
 
-As of November 8, 2026.
+As of November 9, 2026.
 
 | Stage | Status | Evidence |
 | --- | --- | --- |
@@ -34,9 +34,9 @@ As of November 8, 2026.
 | Cameras | ✅ Done | Wrist and overhead, about 30 fps each |
 | Recording workflow | ✅ Done | Start, pass, fail and cancel page; self-test passes |
 | First replay | ✅ Done | The follower replays a recorded episode on its own |
-| Record 50 demonstrations | 🔄 Ongoing | 19 of 50 passed so far (plus 2 failed), private dataset |
-| Fine-tune π0.5 | ⏳ Next | Hugging Face Jobs, one A100, at most about $16 |
-| Autonomous runs | ⏳ Planned | 20 scored trials, then checkpoint comparison |
+| Record 50 demonstrations | ✅ Done | 50 passed plus 2 failed, all 52 reviewed; private dataset |
+| Fine-tune π0.5 | 🔄 Training | One H200 on Hugging Face Jobs, 7,000 steps, about $23 |
+| Autonomous runs | ⏳ Next | 20 scored trials, then checkpoint comparison |
 | Voice commands | ⏳ Planned | Speech-to-text picks the trained task sentence |
 
 > [!NOTE]
@@ -70,11 +70,12 @@ How I found each problem, isolated it and proved the fix. The full detail is in 
 
 - **Camera fault traced in the system log.** Recording kept stopping with "latest frame is too old". The macOS kernel log showed the wrist camera physically disconnecting at those moments: 193 times in one evening, against once for the overhead camera on the same hub. That ruled out software, the hub and my first theory, USB bandwidth.
 - **A recorder built around LeRobot, not inside it.** I wrapped LeRobot's own `record()` with a start, pass, fail and cancel page that keeps failed attempts with labels. An independent review against LeRobot's source found three bugs before first use; each fix has a self-test case.
-- **Reviewing my own data first.** Before the real 50, I checked all 8 test episodes from sampled frames and joint data. That caught false starts, my hand and laptop screen in the overhead view, and look-alike objects on the table. I fixed the scene before recording.
+- **A cloud model my Mac couldn't load, caught before the arm.** The cloud training image had moved to a newer LeRobot the same day. A 20-step smoke test and a check of the saved files found 437 of 813 weight names my Mac's version wouldn't recognize. The job now installs the Mac's exact LeRobot and `transformers` before training, and the new smoke model matches all 813.
+- **Reviewing my own data first.** Before the real 50, I checked all 8 test episodes from sampled frames and joint data. That caught false starts, my hand and laptop screen in the overhead view, and look-alike objects on the table. I fixed the scene before recording. Then I reviewed all 52 real episodes: every pass ends with all three tools in the box, and a frame-by-frame scan found no joint glitches.
 - **Calibration offset traced to its root cause.** LeRobot puts each joint's zero at the middle of the calibration sweep, not at the reference pose. I matched the two arms' middles and measured 0.48° on the base and 0.04° on the wrist.
 - **A startup bug found and covered by tests.** Torque was enabled before target positions were set, so stale targets could move the arm. I fixed the order and made shutdown release every motor even after an error; 51 focused tests pass.
 - **Evidence before blame.** A USB error pointed at a new cable. On the same board, motor and port, both cables passed 50 of 50 reads, so I kept it.
-- **Correcting my own mistakes.** A "safety" step limit made teleoperation slow and noisy, a video setting I'd credited did nothing, and my USB-bandwidth theory was wrong. Each one is corrected in the log.
+- **Correcting my own mistakes.** A "safety" step limit made teleoperation slow and noisy, a video setting I'd credited did nothing, my USB-bandwidth theory was wrong, and a fast video seek in my data review landed on the wrong frames. Each one is corrected in the log.
 
 ## The build
 
@@ -118,7 +119,7 @@ How I found each problem, isolated it and proved the fix. The full detail is in 
 
 1. **Teleoperate:** I move the leader and the follower copies it.
 2. **Record:** each episode saves both camera videos, the joint angles, the task sentence and my pass or fail label.
-3. **Fine-tune:** start from `pi05_base` and train on the passed episodes on a cloud A100.
+3. **Fine-tune:** start from `pi05_base` and train on the passed episodes on a cloud H200.
 4. **Run:** the Mac runs the trained model on the arm, with real-time chunking for smooth motion.
 5. **Measure:** 20 scored trials. I'll publish the success rate and what went wrong.
 6. **Voice:** speech-to-text on the Mac turns what I say into the task sentence. π0.5 only does tasks it has practised, so each new task gets its own demonstrations.
@@ -129,12 +130,12 @@ Every command is in the [runbook](RUNBOOK.md).
 
 - **π0.5 on an M3 Max:** 0.64 s per 50-action chunk, using 9.2 GiB in bfloat16. A chunk covers 1.67 s of motion at 30 fps, so the Mac keeps up on paper. This timed the model alone on random weights.
 - **Real-time chunking:** 0.66 s per chunk, using 9.3 GiB.
+- **Training:** 2.28 s per step at batch 32 on an H200. Training loss fell from 0.099 at step 200 to 0.020 at step 3,200 of 7,000. That only shows it's fitting my demonstrations; the arm decides whether it works.
 
 ## Not tested yet
 
 - Anything with a trained π0.5 on the real arm
-- The cloud training job, which is why a smoke test comes first
-- Loading a cloud-trained checkpoint on the Mac, because the cloud image may be newer than my LeRobot 0.6.2
+- Loading the trained weights on the Mac and running them. So far only the smoke-test model's config and weight names are checked
 - A full recording session without a wrist-camera dropout
 
 ## Credits
