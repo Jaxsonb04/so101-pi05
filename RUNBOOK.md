@@ -131,7 +131,7 @@ Keep the `--dataset.exclude_episodes` flag the recording page printed (mine was 
 
 Run the full-run command below with four changes: `--timeout 30m`, `--policy.repo_id=${POLICY}_smoke`, `--steps=20` and `--save_freq=20`. It costs under $1. It proves the image, your dataset and checkpoint upload all work before you pay for the long run.
 
-Then check that the smoke model's config loads on the Mac. An error here means the cloud trained with a different LeRobot version:
+Then check that the smoke model's config loads on the Mac. An error here means the cloud trained with a different LeRobot version. A clean load doesn't rule out a `transformers` mismatch, which renames weights instead, so keep both versions pinned:
 
 ```bash
 python -c "from lerobot.configs.policies import PreTrainedConfig; print(PreTrainedConfig.from_pretrained('${POLICY}_smoke').type)"
