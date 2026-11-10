@@ -139,45 +139,31 @@ The replay is the first time the follower moved without me driving it. It plays 
 
 ## November 9: 50 demonstrations, then training
 
-### The dataset
+### Finishing the dataset
 
-- Finished recording: **52 episodes, 50 passed and 2 failed**, 25.4 minutes at 30 fps over two evenings. The same command continued the dataset, and the pass count carried over.
-- The wrist camera dropped off USB 18 more times, mostly in the first few minutes. No saved episode was affected, but it isn't fixed.
+I recorded the rest of the demonstrations over two evenings and ended up with 52 takes: 50 good and 2 failed. The recording page picked up where I'd left off each time, which is exactly why I built it. The wrist camera kept dropping out, but luckily never in the middle of a take I kept.
 
-### Reviewing all 52 episodes
+Before training anything, I went through every take. All 50 good ones end with the three tools in the box. The joint data looked clean too, with no long pauses, no false starts, and every take starting from roughly the same pose. One take runs about twice as long as the rest because the arm missed a grab and went back for it. That's actually useful for the model to see.
 
-- For every episode I checked the joint data (length, idle time at start and end, motion, leader–follower gap, start pose) and frames from both cameras, then looked at the last overhead frame of each one myself.
-- All 50 passes end with every tool in the box and nothing on the table. Both fails are real: one left a screwdriver and a strip out, the other moved nothing.
-- No bad episodes. Passes take 16.6–61.6 s (median 28 s), motion starts within 2.3 s of the start and stops within 2.5 s of the end, and start poses stay within 10°. The longest pass seems to include a regrasp that still succeeded, which is useful recovery data.
-- One thing I hadn't controlled: the toolbox sat in 4 different places. 38 of the 50 passes are at the main spot, so I'll test there first. The other spots would need 10–15 more demonstrations each.
-- **A mistake in the review itself.** My first frame grab used ffmpeg's fast seek, which lands a few seconds late in these AV1 videos, so the "last frames" showed the next episode's setup. Judged on those frames, 15 passes looked like the tools had been reset and one looked unfinished. None of that was true. Decoding each video from the start by frame number fixed it. Lesson: check LeRobot videos by frame number, or with LeRobot's own loader.
-- A frame-by-frame scan of every episode found no joint glitches, one 100 ms wrist-camera stall, and short holds in 0.2% of overhead frames. The cameras trail the joint data by a median of 1–2 frames, which will be the same on the arm. Nothing needed dropping.
+One thing I didn't plan for: the toolbox ended up in four different spots across the takes. Most of them (38) are in the same place, so that's where I'll test first.
 
-### The cloud trained a model my Mac couldn't load
+I also made a mistake in the review. My script jumped to the last frame of each video with a fast seek, which in these files lands a few seconds late. So I was really looking at the start of the next take, and some good takes looked unfinished. Decoding the videos frame by frame fixed it. Lesson learned: don't trust fast seeking on robot video.
 
-- The first 20-step smoke test failed after 28 s: `` `ema`: Could not decode the value ``. LeRobot 0.6.2 doesn't send the command line to the cloud. It uploads a config file, and the cloud image (`huggingface/lerobot-gpu:latest`) had been rebuilt that day from LeRobot 0.7.1, which changed that setting's format. The image has no version tags to pin.
-- Passing the flags straight to the cloud's trainer got a 20-step run through. But the model didn't fit my Mac: its config had a field 0.6.2 rejects (`optimizer_fused`), and **437 of 813 weight names** differed, because the image's newer `transformers` drops one level from the vision encoder's names. It would have failed at the first rollout.
-- Fix: the job installs the Mac's exact LeRobot commit and `transformers` 5.5.4 into the image before training. The pinned smoke test's model matches: the config and both processors load, and all 813 weights have the names and shapes my π0.5 expects. That was a check of the saved files only; the weights first get loaded for real at the first rollout.
-- The smoke tests also compared GPUs: **2.28 s per step on an H200** against 5.17 s on an A100, at twice the price, so the H200 is slightly cheaper per step. The two runs used different software versions, so that's rough.
-- It also corrected my cost estimate: 10,000 steps on the A100 would have taken about 14 hours and $36, not the 6 hours and $15 I'd planned.
+### A model my Mac couldn't load
 
-### Training settings
+π0.5 is too big to train on a laptop, so training runs in the cloud on Hugging Face Jobs. My first 20-step test run failed almost immediately with a config error. LeRobot's cloud image had been updated to a newer version that same day, and it couldn't read the config my older local version sent it.
 
-- **Full fine-tune**, not just the action expert. Freezing the 3B vision-language model saves memory, which the H200's 141 GB doesn't need, and LeRobot's docs say it comes at some cost in success rate.
-- **Image augmentation on.** It's off by default in LeRobot's π0.5, but openpi's own training uses crops, small rotations and colour changes. My data has two sessions in different light, and the wrist camera's colour drifts.
-- **7,000 steps** at batch 32, about 5 passes over the data, with checkpoints at 3,500 and 7,000. I'll choose between them on the arm. In one reported comparison (openpi issue #1060), two models had the same offline error but very different task success, so I didn't hold out a validation set.
-- **Left out:** EMA weights, and subtask annotations. π0.5's processors in LeRobot 0.6.2 read only the single task sentence, so subtask labels wouldn't reach the model yet.
+Getting around that produced a test model, so I checked whether my Mac could actually load it. It couldn't, because about half the weights had been renamed between versions. Without that check, I'd only have found out when I tried to run it on the arm.
 
-### Training run
+The fix was to make the cloud job install the exact LeRobot and `transformers` versions I run locally before it starts training. The next test model matched my setup exactly. I also switched from an A100 to an H200 GPU, which ran more than twice as fast for twice the price.
 
-- Started at 21:08 on an H200 with a 6-hour cap. The log confirms the pinned versions and 50 episodes (44,270 frames), so the two fails were skipped.
-- **2.28 s per step**, the same as the smoke test, so augmentation costs nothing: data loading waits 0.002 s per step. It uses 45 of the GPU's 141 GB.
-- Training loss: 0.099 at step 200, 0.063 at step 400, 0.020 at step 3,200 (at 23:20). That only shows it's fitting the demonstrations; whether it works gets decided on the arm.
-- At that pace it finishes around 01:45 on November 10, for about $23.
+### Training
+
+I went with a full fine-tune and turned on image augmentation, since the recordings came from two sessions with different lighting. The run makes about five passes over the data and saves a checkpoint halfway and at the end, so I can try both on the arm. It started around 9 pm and should finish overnight. The training loss is dropping, which is a good sign, but the real test is whether the arm can actually do the task.
 
 ## Next
 
-1. Fix the wrist camera's connection. A drop during a rollout would stop the policy, just as it stopped recording.
-2. Run the trained model on the arm with the toolbox at its main spot: plain mode first, then real-time chunking.
-3. Score 20 trials and compare the 3,500- and 7,000-step checkpoints.
-4. Add voice: speech-to-text on the Mac picks the task sentence π0.5 was trained on.
+1. Fix the wrist camera's connection.
+2. Run the trained model on the arm.
+3. Score 20 attempts and compare the two checkpoints.
+4. Add voice commands.
