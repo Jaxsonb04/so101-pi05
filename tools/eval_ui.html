@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SO-101 Eval</title>
+<style>
+  :root {
+    --bg: #0d0e10; --panel: #17191c; --line: #2a2d32;
+    --ink: #ecebe6; --muted: #9a9c9f; --dark: #0b0c0d;
+    --rec: #d42a24; --pass: #2fbf71; --fail: #f2a516;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; min-height: 100dvh; padding: 16px clamp(16px, 3vw, 32px);
+    display: grid; grid-template-rows: auto auto 1fr auto; gap: 14px;
+    background: var(--bg); color: var(--ink);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  header { display: flex; gap: 16px; align-items: baseline; color: var(--muted); }
+  header .task { color: var(--ink); flex: 1; }
+  header .count { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  /* One bar says the state: grey waiting, red running, green after a pass, amber after a fail. */
+  .bar {
+    --tone: var(--panel); --tone-ink: var(--ink);
+    position: relative; overflow: hidden; border-radius: 12px;
+    background: var(--tone); color: var(--tone-ink);
+    display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+    padding: 16px 20px; min-height: 84px;
+  }
+  [data-phase="running"] .bar { --tone: var(--rec); --tone-ink: #fff; }
+  [data-phase="reset"][data-last="b"] .bar, [data-phase="done"] .bar { --tone: var(--pass); --tone-ink: var(--dark); }
+  [data-phase="reset"][data-last="c"] .bar, [data-phase="count"] .bar, [data-phase="error"] .bar { --tone: var(--fail); --tone-ink: var(--dark); }
+  .status { font-size: 40px; font-weight: 800; line-height: 1; }
+  .timer { font: 700 40px/1 ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .prompt { flex: 1; min-width: 16ch; font-size: 18px; }
+  .limit { position: absolute; left: 0; bottom: 0; height: 5px; background: rgba(255,255,255,.8); }
+  [data-phase="running"] .status::before { content: "● "; }
+
+  .keys { display: flex; gap: 10px; }
+  .key {
+    font: inherit; font-weight: 600; color: inherit; cursor: pointer;
+    background: rgba(0,0,0,.18); border: 0; border-radius: 10px; padding: 8px 14px 8px 8px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .key kbd {
+    display: grid; place-items: center; width: 40px; height: 40px; border-radius: 8px;
+    background: var(--ink); color: var(--dark); font: 700 20px ui-monospace, Menlo, monospace;
+  }
+  .key[data-key="b"] kbd { background: var(--pass); }
+  .key[data-key="c"] kbd { background: var(--fail); }
+  .key[data-key="d"] kbd { background: var(--muted); }
+  .key:focus-visible { outline: 3px solid currentColor; outline-offset: 2px; }
+
+  .cams { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; align-content: start; }
+  figure { margin: 0; position: relative; background: #000; border-radius: 12px; overflow: hidden; aspect-ratio: 4 / 3; }
+  figure img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  figcaption {
+    position: absolute; left: 10px; top: 10px; padding: 2px 8px; border-radius: 6px;
+    background: rgba(0,0,0,.6); color: var(--ink); font-size: 13px; text-transform: capitalize;
+  }
+  .empty { color: var(--muted); align-self: center; justify-self: center; }
+
+  footer { color: var(--muted); font-size: 14px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+</style>
+</head>
+<body data-phase="connecting">
+  <header>
+    <span>SO-101 Eval</span>
+    <span class="task" id="task"></span>
+    <span class="count" id="count"></span>
+  </header>
+
+  <section class="bar">
+    <span class="status" id="status">Starting</span>
+    <span class="timer" id="timer" hidden></span>
+    <span class="prompt" id="prompt">Loading the policy and connecting the arm and cameras…</span>
+    <span class="keys">
+      <button class="key" data-key="a" aria-keyshortcuts="a" hidden><kbd>A</kbd>Start trial</button>
+      <button class="key" data-key="b" aria-keyshortcuts="b" hidden><kbd>B</kbd>Pass</button>
+      <button class="key" data-key="c" aria-keyshortcuts="c" hidden><kbd>C</kbd>Fail</button>
+      <button class="key" data-key="d" aria-keyshortcuts="d" hidden><kbd>D</kbd>Go home</button>
+      <button class="key" data-key="m" aria-keyshortcuts="m" hidden><kbd>M</kbd>Mark</button>
+      <button class="key" data-key="0" aria-keyshortcuts="0" aria-label="0 tools in the box" hidden><kbd>0</kbd></button>
+      <button class="key" data-key="1" aria-keyshortcuts="1" aria-label="1 tool in the box" hidden><kbd>1</kbd></button>
+      <button class="key" data-key="2" aria-keyshortcuts="2" aria-label="2 tools in the box" hidden><kbd>2</kbd></button>
+      <button class="key" data-key="3" aria-keyshortcuts="3" aria-label="3 tools in the box" hidden><kbd>3</kbd></button>
+      <button class="key" data-key="4" aria-keyshortcuts="4" aria-label="4 tools in the box, a pass" hidden><kbd>4</kbd></button>
+    </span>
+    <span class="limit" id="limit" aria-hidden="true"></span>
+  </section>
+
+  <main class="cams" id="cams"><p class="empty">The camera feeds appear once the arm connects.</p></main>
+
+  <footer>B and C end the trial and save the result; after C, or at the time limit, press how many tools ended in the box. D stops the policy and sends the arm home (saved as stopped). M marks a moment for Claude's review. The arm returns to its start pose after every trial. Pulling the follower's DC power is still the real emergency stop. Keys work while this window is in front. To stop early, press Ctrl+C in the terminal; saved trials are uploaded.</footer>
+  <div class="sr" aria-live="assertive" id="announce"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const keys = [...document.querySelectorAll(".key")];
+let view = null, announced = "", camsShown = false;
+
+const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+function showCameras(names) {
+  if (camsShown || !names || !names.length) return;
+  $("cams").replaceChildren(...names.map((name) => {
+    const fig = document.createElement("figure");
+    const img = document.createElement("img");
+    const cap = document.createElement("figcaption");
+    img.src = `/cam/${encodeURIComponent(name)}`;
+    img.alt = `${name} camera`;
+    cap.textContent = name;
+    fig.append(img, cap);
+    return fig;
+  }));
+  camsShown = true;
+}
+
+function render(s) {
+  view = s;
+  document.body.dataset.phase = s.phase;
+  document.body.dataset.last = s.last || "";
+  const marks = s.marks && s.marks.length ? `${s.marks.length} moment${s.marks.length > 1 ? "s" : ""} marked. ` : "";
+  const [lastStatus, before] = { b: ["Passed", "Saved as pass (4 of 4 in the box). "],
+    c: ["Failed", `Saved as fail (${s.count} of 4 in the box). `], d: ["Stopped", "Sent home, saved as stopped. "] }[s.last] || ["Ready", ""];
+  const judged = s.passed + s.failed;
+  const average = judged ? `${(s.tools / judged).toFixed(1)} of 4 tools in the box on average` : "";
+  const summary = `${s.passed} passed, ${s.failed} failed, ${s.stopped} stopped${average ? `; ${average}` : ""}.`;
+  const [status, prompt] = {
+    connecting: ["Starting", "Loading the policy and connecting the arm and cameras (about 2 minutes)…"],
+    ready: ["Ready", "Set the scene with the arm at its start pose, then press A to start trial 1."],
+    running: [`Trial ${s.trial}`, s.limit && s.limit - s.elapsed <= 10
+      ? `${Math.max(0, Math.ceil(s.limit - s.elapsed))} s left, then the arm goes home and you count the tools in the box.`
+      : `B pass · C fail · D go home now · M mark this moment for the review. ${marks}`],
+    home: ["Going home", "The arm is returning to its start pose…"],
+    count: s.decided ? ["How many?", "How many tools ended in the box? Press 0–3."]
+      : ["Time's up", "How many tools are in the box? Press 0–4 (4 is a pass)."],
+    reset: [lastStatus, `${before}${marks}Reset the scene, then press A to start trial ${s.trial + 1}.`],
+    starting: ["Starting", "Saving the last trial, then the policy starts…"],
+    finishing: [lastStatus, "Last trial done. Saving and uploading…"],
+    done: ["Done", summary],
+    error: ["Error", `${s.error || "Error"}. Saved trials were kept; details are in the terminal.`],
+    offline: ["Offline", "The eval page isn't running. Start it from the terminal."],
+  }[s.phase];
+
+  $("status").textContent = status;
+  $("prompt").textContent = prompt;
+  $("timer").hidden = s.phase !== "running";
+  $("timer").textContent = clock(s.elapsed || 0);
+  $("limit").style.width = s.phase === "running" && s.limit ? `${Math.min(100, (100 * s.elapsed) / s.limit)}%` : "0";
+  $("task").textContent = s.task || "";
+  $("count").textContent = `${s.passed} pass · ${s.failed} fail · ${s.stopped || 0} stopped${average ? ` · avg ${(s.tools / judged).toFixed(1)}/4` : ""}${s.target ? ` · ${judged} / ${s.target} judged` : ""}`;
+  const shown = { a: ["ready", "reset"], b: ["running"], c: ["running"], d: ["running"], m: ["running"],
+    0: ["count"], 1: ["count"], 2: ["count"], 3: ["count"], 4: s.decided ? [] : ["count"] };
+  for (const k of keys) k.hidden = !shown[k.dataset.key].includes(s.phase);
+  showCameras(s.cameras);
+
+  if (s.phase !== announced) {  // screen readers hear each change once, not every poll
+    $("announce").textContent = `${status}. ${s.phase === "running" ? "" : prompt}`;
+    announced = s.phase;
+  }
+}
+
+async function poll() {
+  try {
+    render(await (await fetch("/state", { cache: "no-store" })).json());
+  } catch {
+    if (view && ["done", "error"].includes(view.phase)) return;  // keep the final state on screen
+    render({ ...(view || { passed: 0, failed: 0, stopped: 0 }), phase: "offline", cameras: [] });
+  }
+}
+
+async function press(key) {
+  const button = keys.find((k) => k.dataset.key === key);
+  if (!button || button.hidden) return;
+  try {
+    const r = await fetch("/key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key }) });
+    if (r.ok) render(await r.json());
+  } catch {}
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+  const key = e.key.toLowerCase();
+  if (keys.some((k) => k.dataset.key === key)) { e.preventDefault(); press(key); }
+});
+keys.forEach((k) => k.addEventListener("click", () => press(k.dataset.key)));
+setInterval(poll, 250);
+poll();
+</script>
+</body>
+</html>

@@ -37,6 +37,7 @@ PORT = 8101
 HOSTS = set()  # set by serve()
 PAGE = Path(__file__).with_name("record_ui.html").read_bytes()
 LABELS = "episode_labels.csv"
+KEYS = {"a", "b", "c", "d"}  # keys the page may press; the eval page adds its own
 
 # The same flags LeRobot's own key listener sets; record() and record_loop() read them every tick.
 events = {"exit_early": False, "rerecord_episode": False, "stop_recording": False}
@@ -59,6 +60,26 @@ def press(key):
             state["decided"] = key
             events["rerecord_episode"] = key == "d"  # LeRobot's own re-record: discards the frames and video
             events["exit_early"] = True  # ends the episode; LeRobot then saves it, unless cancelled
+
+
+def match_cameras(cams):
+    """Put the wrist and overhead cameras in the right slots, whatever numbers macOS gave them.
+
+    macOS renumbers the two identical cameras after a USB drop, replug or restart. Only the overhead
+    camera sees the white wall at the top of its picture: over 312 demo frames its top fifth was
+    11-119 (median 78) brighter than the wrist camera's, and -28 to -110 in the swapped 20:19 run.
+    Swaps the two in place (the robot reads frames through this dict) and returns True if it did."""
+    if not {"wrist", "top"} <= cams.keys():
+        return False
+    gap = float(cams["top"].read_latest(max_age_ms=2000)[:96].mean() - cams["wrist"].read_latest(max_age_ms=2000)[:96].mean())
+    if abs(gap) < 20:  # too close to call: never guess, a wrong swap would spoil every trial
+        raise RuntimeError(f"Can't tell the wrist and overhead cameras apart (wall brightness gap {gap:.0f}). "
+                           "Check both are plugged in and the room light is on, then start again")
+    if gap < 0:
+        cams["wrist"], cams["top"] = cams["top"], cams["wrist"]
+        print(f"Cameras were numbered the other way round; swapped them: wrist = camera "
+              f"{getattr(cams['wrist'], 'index_or_path', '?')}, top = camera {getattr(cams['top'], 'index_or_path', '?')}.")
+    return gap < 0
 
 
 def saved_labels(labels, saved):
@@ -91,6 +112,8 @@ def record_loop(**kw):
     if state["target"] and passed >= state["target"]:  # already enough passes: record nothing, just finish
         events.update(stop_recording=True, rerecord_episode=True)
         return
+    if not cameras:
+        match_cameras(kw["robot"].cameras)
     cameras.update(kw["robot"].cameras)
     state.update(phase="ready", task=kw.get("single_task") or "", limit=kw["control_time_s"],
                  decided=None, started=None, cameras=list(cameras))
@@ -188,7 +211,7 @@ class Handler(BaseHTTPRequestHandler):
             key = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 100)))["key"]
         except (ValueError, KeyError, TypeError):
             return self.send(400)
-        if key not in ("a", "b", "c", "d"):
+        if key not in KEYS:
             return self.send(400)
         press(key)
         self.send(200, self.snapshot())
@@ -199,7 +222,11 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(port=PORT):
     """Start the page server; port 0 picks a free port (self-test). Returns the page URL."""
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    except OSError as e:  # usually an earlier page still running, e.g. stuck after Ctrl+C while loading
+        sys.exit(f"Port {port} is busy ({e.strerror}): an earlier recording or eval page is probably still running. "
+                 f"Find it with `lsof -i :{port}`, end it with `kill <PID>`, then start again.")
     port = server.server_address[1]
     HOSTS.update({f"127.0.0.1:{port}", f"localhost:{port}"})
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -234,8 +261,12 @@ class FakeDataset:
 
 
 class FakeCamera:
+    def __init__(self, wall=40):  # brightness of the top fifth; the overhead camera sees a bright wall
+        self.wall = wall
+
     def read_latest(self, max_age_ms=500):
         frame = np.full((480, 640, 3), 40, np.uint8)
+        frame[:96] = self.wall
         cv2.putText(frame, time.strftime("%H:%M:%S"), (190, 255), cv2.FONT_HERSHEY_SIMPLEX, 2, (200, 200, 200), 3)
         return frame
 
@@ -253,7 +284,7 @@ def fake_record_loop(events, control_time_s, dataset=None, **_):
 
 def fake_record(root, limit, saved=0):
     """The episode loop of lerobot_record.record() (lines 500-553), without a robot."""
-    robot = SimpleNamespace(cameras={"wrist": FakeCamera(), "top": FakeCamera()})
+    robot = SimpleNamespace(cameras={"wrist": FakeCamera(), "top": FakeCamera(140)})
     dataset = FakeDataset(root, saved)
     while not events["stop_recording"]:
         record_loop(robot=robot, dataset=dataset, events=events, control_time_s=limit,

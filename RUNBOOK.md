@@ -1,6 +1,6 @@
 # Runbook: SO-101 + π0.5
 
-Work from top to bottom. The flags were checked against LeRobot 0.6.2. Steps 1–4 (access, hardware, cameras, recording and replay) have been run on the arm, and step 5's smoke test and full training run have been run in the cloud. Step 6 onward hasn't been run yet.
+Work from top to bottom. The flags were checked against LeRobot 0.6.2. Steps 1–4 (access, hardware, cameras, recording and replay) and steps 6–7 (running and scoring the model) have been run on the arm, and step 5 has been run in the cloud. Step 8 hasn't been run yet.
 
 ## Before you start
 
@@ -202,7 +202,7 @@ Use the exact task text from recording. The first run downloads the model, and t
 lerobot-rollout --strategy.type=base --policy.path=$POLICY --robot.type=so101_follower --robot.port=$FOLLOWER_PORT --robot.id=follower --robot.cameras="$CAMERAS" --task="$TASK" --duration=30 --device=mps
 ```
 
-In this mode the arm pauses for about 0.65 s or more between chunks. That's expected. Once it works, try real-time chunking, which computes the next chunk while the arm is moving:
+In this mode the arm pauses for about 0.65 s or more between chunks. That's expected. You can also try real-time chunking, which computes the next chunk while the arm is moving:
 
 ```bash
 lerobot-rollout --strategy.type=base --inference.type=rtc --inference.rtc.execution_horizon=25 --inference.rtc.max_guidance_weight=10.0 --policy.path=$POLICY --robot.type=so101_follower --robot.port=$FOLLOWER_PORT --robot.id=follower --robot.cameras="$CAMERAS" --task="$TASK" --duration=30 --device=mps
@@ -210,49 +210,55 @@ lerobot-rollout --strategy.type=base --inference.type=rtc --inference.rtc.execut
 
 The horizon is 25 here, not the docs' example of 10. At 30 FPS the Mac's inference delay is about 20 steps, and the horizon has to be longer than that delay.
 
+On this setup plain mode did better: 5 of 20 tools in the box over 5 trials, against none with real-time chunking. Real-time chunking asks for a new plan whenever 30 or fewer actions are left (about every 0.7 s), and most of each new plan is chosen fresh. So when two tools look equally good, the arm keeps switching between them. Plain mode carries out each 1.7 s plan first. The rest of this runbook uses plain mode.
+
 ## 7. Measure it
 
-Run 20 scored trials. Use the leader arm to reset between trials.
+Score trials with the eval page, a small page on top of LeRobot's episodic rollout. The keys:
 
-```bash
-lerobot-rollout \
-  --strategy.type=episodic \
-  --policy.path=$POLICY \
-  --robot.type=so101_follower --robot.port=$FOLLOWER_PORT --robot.id=follower \
-  --robot.cameras="$CAMERAS" \
-  --teleop.type=so101_leader --teleop.port=$LEADER_PORT --teleop.id=leader \
-  --dataset.repo_id=$HF_USER/rollout_so101_tools_toolbox \
-  --dataset.num_episodes=20 \
-  --dataset.episode_time_s=60 \
-  --dataset.reset_time_s=20 \
-  --dataset.single_task="$TASK" \
-  --dataset.private=true \
-  --device=mps
-```
+- **A** starts a trial.
+- **B** marks a pass (4 of 4 tools in the box).
+- **C** marks a fail, then asks how many tools ended up in the box (0–3).
+- **D** stops the model and sends the arm home. The trial is kept as "stopped" and doesn't count.
+- **M** marks a moment for the review.
+- At the time limit the arm goes home, and the page asks for the count (0–4, where 4 is a pass).
 
-`lerobot-rollout` only accepts result datasets whose name starts with `rollout_`. Press `→` at the end of every trial, pass or fail: `←` would delete a failed trial and inflate the score.
+Run it **without** the leader arm. The follower then goes back to its start pose by itself after every trial, so put it in its start pose before you begin. Before the first trial, the page also checks which camera is which (only the overhead one sees the wall) and swaps them if macOS has renumbered them.
 
-For each trial, write down where the tools were, how many ended up in the toolbox (3 of 3 counts as a success) and how it failed. Include some positions you didn't train on.
-
-Then compare earlier checkpoints, because the last one isn't always the best. One published [SO-101 π0.5 run](https://huggingface.co/Project-IRA/TPSoSe2026_Pi05_LeRobot_SO101_Finetuning_V7_Full_V2) got its best real-arm results near step 8,000 and got worse after that. It was a different, much larger dataset, so treat that as a reason to check, not a prediction.
+The earlier checkpoint did better here, so download it:
 
 ```bash
 hf download $POLICY --include "checkpoints/003500/pretrained_model/*" --local-dir outputs/ckpts
 ```
 
-Then use `--policy.path=outputs/ckpts/checkpoints/003500/pretrained_model` in the rollout command.
-
-## 8. Voice commands
-
-π0.5 only does tasks it was trained on, so voice picks a trained task; it doesn't teach new ones. Each new task needs its own demonstrations with one fixed sentence.
-
-Interactive mode keeps the arm still until you type `/start`, and takes `/subtask <sentence>`, `/reset` and `/stop`:
-
 ```bash
-lerobot-rollout --strategy.type=base --inference.type=rtc --inference.rtc.execution_horizon=25 --inference.rtc.max_guidance_weight=10.0 --policy.path=$POLICY --robot.type=so101_follower --robot.port=$FOLLOWER_PORT --robot.id=follower --robot.cameras="$CAMERAS" --task="$TASK" --duration=60 --device=mps --interactive=true
+python tools/eval_ui.py --strategy.type=episodic --policy.path=outputs/ckpts/checkpoints/003500/pretrained_model --robot.type=so101_follower --robot.port=$FOLLOWER_PORT --robot.id=follower --robot.cameras="$CAMERAS" --dataset.repo_id=$HF_USER/rollout_so101_tools_toolbox --dataset.num_episodes=20 --dataset.episode_time_s=90 --dataset.single_task="$TASK" --dataset.private=true --dataset.streaming_encoding=true --dataset.encoder_threads=2 --device=mps
 ```
 
-Version 1 needs no code: turn on macOS Dictation, type `/subtask `, dictate the task sentence, press Enter, then type `/start`. Version 2 is a short script that listens to the microphone, matches what you said to a trained sentence, and types those commands for you. Voice is not a safety stop; the follower's DC power is.
+- `--dataset.num_episodes` counts judged trials (pass or fail).
+- `--dataset.episode_time_s=90` is the trial time limit. In plain mode only about 70% of it is motion; the rest is the pauses while it plans.
+- Results go in `trial_labels.csv` (trial, result, tools in the box, marks) inside the rollout dataset. `lerobot-rollout` only accepts result datasets whose name starts with `rollout_`.
+- The model takes about 2 minutes to load and prints nothing meanwhile. Don't press Ctrl+C then.
+
+On the same settings and similar layouts, the final checkpoint got 6 of 20 tools in, and the 3,500-step checkpoint got 11 of 20 with one full pass. One published [SO-101 π0.5 run](https://huggingface.co/Project-IRA/TPSoSe2026_Pi05_LeRobot_SO101_Finetuning_V7_Full_V2) also saw later checkpoints get worse. Always compare.
+
+Then review the run:
+
+```bash
+python tools/review_trials.py $HF_USER/rollout_so101_tools_toolbox_<timestamp>
+```
+
+It marks each trial's picks (the gripper is told to close but a tool holds it open), releases, stretches of 12 s or more without a pick, and your M marks on the camera frames. It writes an image per trial and a `review.md` with a notes line per trial into `media/private/reviews/` (git ignores `media/private/`). The drawings are for people: don't put them in a training dataset.
+
+## 8. Record corrections where it fails
+
+Not run yet. LeRobot's DAgger mode runs the model with the leader arm connected. Press **Space** to pause the model; the leader is driven to the follower's position. Press **Tab** and take over to finish the grasp, **Tab** again to end the correction, then **Space** to hand back. Each correction is saved as its own episode:
+
+```bash
+lerobot-rollout --strategy.type=dagger --policy.path=outputs/ckpts/checkpoints/003500/pretrained_model --robot.type=so101_follower --robot.port=$FOLLOWER_PORT --robot.id=follower --robot.cameras="$CAMERAS" --teleop.type=so101_leader --teleop.port=$LEADER_PORT --teleop.id=leader --dataset.repo_id=$HF_USER/rollout_so101_tools_toolbox_corrections --dataset.num_episodes=20 --dataset.single_task="$TASK" --dataset.private=true --device=mps
+```
+
+Aim the corrections at what the reviews show it can't do yet. Here that means tools on the right side of the table, tools by the cables at the far left, and tools touching each other. Plain `lerobot-rollout` doesn't fix swapped cameras, so check them with `lerobot-find-cameras opencv` first.
 
 ## If something goes wrong
 
@@ -261,7 +267,11 @@ Version 1 needs no code: turn on macOS Dictation, type `/subtask `, dictate the 
 | `QUANTILES normalization mode requires q01 and q99 stats` | Add `--policy.normalization_mapping='{"ACTION": "MEAN_STD", "STATE": "MEAN_STD", "VISUAL": "IDENTITY"}'` to the train command. |
 | 401 or 403 from `paligemma` | Accept the license in step 1, and check you're logged in with `hf auth whoami`. |
 | `latest frame is too old` (a camera sent nothing for 0.5 s) | Check whether the camera physically disconnected: `log show --last 10m --style compact \| grep Innomaker \| grep -c 'hardware connection lost'` (use your camera's name). Here the wrist camera dropped 193 times in one evening while the overhead camera on the same hub dropped once, so the fault was that camera's own cable, plug or port, not software or USB bandwidth. Reseat or replace the cable with strain relief at the wrist, swap hub ports, or plug it straight into the Mac. |
-| A camera shows black or the wrong view | Run `lerobot-find-cameras opencv` again; indexes can change after a replug. On this Mac `fourcc: MJPG` had no effect: LeRobot warns and keeps the default format. |
+| A camera shows black or the wrong view | macOS numbers identical cameras in the order it finds them, so the numbers can flip after a replug or a USB dropout. The recording and eval pages fix this themselves (only the overhead camera sees the wall). For plain `lerobot-*` commands, run `lerobot-find-cameras opencv` and swap `WRIST_CAM` and `TOP_CAM` in `so101.env` if needed. On this Mac `fourcc: MJPG` had no effect: LeRobot warns and keeps the default format. |
+| `Can't tell the wrist and overhead cameras apart` | The page couldn't see the wall clearly in either feed. Check both cameras are plugged in and the room light is on. |
+| `Port 8101 is busy` | An earlier page is still running, often one stopped with Ctrl+C while the model was loading. Find it with `lsof -i :8101`, end it with `kill <PID>`, then start again. |
+| The leader arm moves to the follower and then drops at the end of a trial | That's the episodic mode's handover: it drives the leader to the follower's pose, then turns its motors off. Use the eval page (no leader), hold the leader when a trial ends, or add `--strategy.smooth_leader_to_follower_handover=false`. |
+| The arm swings back and forth between two tools | Use plain mode instead of real-time chunking (step 6). |
 | `FileExistsError` when recording starts | An earlier run stopped before saving its first episode and left an empty dataset folder. The recording page removes it automatically. With plain `lerobot-record`, delete that empty folder, or continue a folder that has episodes with `--resume=true --dataset.root=<its folder>`. |
 | `Dataset names for rollout must start with 'rollout_'` | Name `lerobot-rollout` result datasets `rollout_...`. |
 | macOS finds 0 cameras ("not authorized to capture video") | Allow your terminal app in System Settings → Privacy & Security → Camera, then quit and reopen it. |
