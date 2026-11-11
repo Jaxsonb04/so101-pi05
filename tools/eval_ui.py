@@ -10,7 +10,7 @@ every trial, and holds it there while you reset the scene.
 
 - Every trial is saved in the rollout dataset; its result goes in trial_labels.csv there.
 - --dataset.num_episodes is the number of judged trials (pass or fail); stopped ones are extra.
-- If a trial reaches --dataset.episode_time_s, the arm goes home and the page asks B or C.
+- If a trial reaches --dataset.episode_time_s, the arm goes home and the page asks 0-4 (4 = pass).
 
     python tools/eval_ui.py <the lerobot-rollout flags, without --teleop.*>
     python tools/eval_ui.py --demo       # try the page without the robot
@@ -243,8 +243,7 @@ def main():
 
     install(episodic.EpisodicStrategy)
     episodic.init_keyboard_listener = lambda: (None, events)  # the page is the keyboard
-    if state["target"]:
-        sys.argv.append("--dataset.num_episodes=1000000")  # the page stops after `target` judged trials
+    sys.argv.append("--dataset.num_episodes=1000000")  # LeRobot skips the reset (labels, going home) after its last episode; the page stops itself
     sys.argv.append("--play_sounds=false")  # LeRobot's spoken cues would be out of step with the page
     url = ui.serve()
     print(f"Eval page: {url}  (keys work while that window is in front)")

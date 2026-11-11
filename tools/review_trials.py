@@ -90,7 +90,8 @@ def review(repo_id):
         events = find_events(action, state, marks)
         s = summary(events, action)
         tiles = []
-        for f, kind, detail in events[:12]:
+        shown = [e for e in events if e[1] != "END"][:11] + [e for e in events if e[1] == "END"]  # always keep the final frame
+        for f, kind, detail in shown:
             it = ds[a + f]
             img = lambda k: (it[f"observation.images.{k}"].permute(1, 2, 0).numpy() * 255).astype(np.uint8)
             tiles.append(tile(img("top"), img("wrist"), f / FPS, kind, detail))
