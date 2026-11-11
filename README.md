@@ -77,6 +77,16 @@ Updated November 10, 2026.
   </tr>
 </table>
 
+### The full pass, raw
+
+<ins>**Trial 2 of 5, 3,500-step checkpoint: all four tools in the box at 40.9 s.**</ins>
+
+- 🎥 ***[Raw video](https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-10-first-pass-raw.mp4)***: overhead and wrist cameras exactly as the robot saw them, real speed, no edits or labels.
+- 📈 ***[Joint data (CSV)](media/2026-11-10-first-pass-joints.csv)***: all six joints, measured and commanded, 30 times per second (1,229 rows).
+
+<p align="center"><img src="media/2026-11-10-first-pass-joints.png" width="720" alt="Joint angles over the 41-second full pass. Top: shoulder, elbow and wrist angles as the arm reaches and returns. Bottom: gripper measured and commanded; four flat stretches where the measured gripper stays open above the command are the four tools being held."></p>
+<p align="center"><sub><b>Bottom chart:</b> where the black line stays above the orange one, the gripper is closed on a tool. <b><i>Four holds = four tools.</i></b></sub></p>
+
 ***Next:*** record data for the spots it misses, then retrain. Details in the [build log](BUILD_LOG.md#november-10-first-runs-on-the-arm-and-finding-out-why-it-fails).
 
 ## Recording demonstrations
