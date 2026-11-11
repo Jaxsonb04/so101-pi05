@@ -1,6 +1,6 @@
 # Build log
 
-My notes from building two SO-101 robot arms and getting them ready to learn a task with π0.5, in the order it happened. I've left the mistakes in, because that's where I learned the most.
+My notes from building two SO-101 robot arms and teaching one of them a task with π0.5, in the order it happened. I've left the mistakes in, because that's where I learned the most.
 
 I did the building, wiring and testing myself. I used [Claude Code](https://claude.com/claude-code), an AI coding assistant, to help me read the LeRobot source, write diagnostic scripts and keep these notes.
 
@@ -142,7 +142,7 @@ By the end of the night I had 21 real takes: 19 good and 2 failed.
 
 I recorded the rest of the demonstrations over two evenings and ended up with 52 takes: 50 good and 2 failed. The recording page picked up where I'd left off each time, which is exactly why I built it. The wrist camera kept dropping out, but luckily never in the middle of a take I kept.
 
-Before training anything, I went through every take. All 50 good ones end with the three tools in the box. The joint data looked clean too, with no long pauses, no false starts, and every take starting from roughly the same pose. One take runs about twice as long as the rest because the arm missed a grab and went back for it. That's actually useful for the model to see.
+Before training anything, I went through every take. All 50 good ones end with all four tools (three bit strips and a screwdriver) in the box. The joint data looked clean too, with no long pauses, no false starts, and every take starting from roughly the same pose. One take runs about twice as long as the rest because the arm missed a grab and went back for it. That's actually useful for the model to see.
 
 One thing I didn't plan for: the toolbox ended up in four different spots across the takes. Most of them (38) are in the same place, so that's where I'll test first.
 
@@ -160,9 +160,69 @@ The fix was to make the cloud job install the exact LeRobot and `transformers` v
 
 I went with a full fine-tune and turned on image augmentation, since the recordings came from two sessions with different lighting. The run makes about five passes over the data and saves a checkpoint halfway and at the end, so I can try both on the arm. It started around 9 pm and should finish overnight. The training loss is dropping, which is a good sign, but the real test is whether the arm can actually do the task.
 
+## November 10: first runs on the arm, and finding out why it fails
+
+### Training finished, so I checked it before it moved anything
+
+Training finished overnight. Before letting the model drive the arm, I fed it frames from my own recordings on the Mac, the same way the real run does, and compared its planned moves with what I'd actually done. It was off by about 2° on average. Just holding still would have been off by about 16°. So the cameras, the joint order and the task text were all reaching the model correctly.
+
+### First time on the arm
+
+It went for the right things straight away. Then it hovered just above a bit strip, closed on air, went back towards the toolbox as if it were holding something, and tried again, about eight times in a minute. It never picked one up. I filmed it on my phone and went through the video frame by frame.
+
+### A page for scoring trials
+
+LeRobot's scoring mode had two problems for me. It ended each trial by driving my leader arm to the follower's position and then letting go of it, so with nobody holding it, both arms dropped. And it only knows pass or fail. So I wrote an [eval page](tools/eval_ui.py) like my recording page. A starts a trial and B marks a pass. C marks a fail, then it asks how many of the four tools made it into the box. D stops the model and sends the arm home, and M marks a moment I want to look at later. I run it without the leader arm, so the follower goes back to its start pose by itself after every trial.
+
+<p align="center"><img src="media/2026-11-10-eval-page.jpg" width="640" alt="The eval page during a trial: a red bar with Trial 1, a 7-second timer and the Pass, Fail, Go home and Mark keys, above the wrist and overhead camera feeds"></p>
+<p align="center"><sub>The eval page mid-trial. For this screenshot it's replaying frames from a recorded trial.</sub></p>
+
+### 21 trials with the cameras swapped
+
+My first proper evaluation was 21 trials, and every one failed. When I went through the recordings, the reason wasn't the model at all: the two camera feeds were swapped. The wrist camera had dropped off USB and come back, and macOS gave the two identical cameras each other's numbers. So the model got the overhead view where it expected the gripper's view, and the other way round.
+
+<p align="center"><img src="media/2026-11-10-camera-swap.jpg" width="560" alt="Top row: the training data, overhead view in the top slot and gripper view in the wrist slot. Bottom row: the eval run, with the two views in each other's slots"></p>
+
+The fix: only the overhead camera can see the bright wall at the top of its picture, so both my pages now compare the two feeds before the arm moves and put them in the right slots. If the picture is ever too unclear to tell, they stop instead of guessing. It kept all 50 of my demos as they were and fixed all 21 swapped trials.
+
+### Smooth mode made it indecisive
+
+Once it could see properly, it swung back and forth between two tools. I'd been using LeRobot's real-time chunking, which plans the next stretch of motion while the arm is still moving. Reading the code showed it replans about every 0.7 seconds and keeps very little of the previous plan. So whenever two tools looked equally good, the model could change its mind every time. In plain mode it carries out each 1.7-second plan before thinking again. In my first five plain-mode trials, 5 of the 20 tools ended up in the box. With real-time chunking it had been none.
+
+### Reviewing every trial
+
+I wanted more out of each trial than pass or fail, so I wrote a [review tool](tools/review_trials.py) that marks every trial's key moments on the camera frames. A pick is when the gripper is told to close but something holds it open, which finds exactly four picks in a typical demo. It also marks each release, any 12 seconds or more without picking anything up (my demos almost never pause that long), and the moments I marked with M. Then I went through every trial and wrote down what happened and why.
+
+<p align="center"><img src="media/2026-11-10-annotated-review-recovery.jpg" width="720" alt="Annotated review sheet: overhead and wrist frames at each key moment, with green PICK, blue RELEASE and red STUCK labels and times"></p>
+<p align="center"><sub>One reviewed trial. At 15.7 s a strip slips out of the gripper, at 17.9 s the model picks it up again, and at 20.7 s it goes in the box.</sub></p>
+
+One thing I had to get straight: drawing on the frames doesn't teach π0.5 anything. It only learns from the raw camera images, the joint angles and the task sentence, and boxes drawn on training frames would just corrupt them. What the review does is tell me exactly which situations need more data. LeRobot also has a correction mode for recording that data: I let the model run, take over with the leader arm when it hesitates, and each takeover is saved as a new training example.
+
+### The halfway checkpoint did better
+
+Training saved a checkpoint halfway as well as at the end, so I ran five trials with each, with the same settings and similar layouts. The final model got 6 of 20 tools into the box. The halfway checkpoint got 11 of 20, and one trial was its first full pass: all four tools in the box, on its own.
+
+<p align="center"><img src="media/2026-11-10-first-pass.gif" width="560" alt="Animated: overhead and wrist views as the arm puts three bit strips and a screwdriver into the toolbox; a label bar counts the tools in the box up to 4 of 4"></p>
+<p align="center"><sub>The first full pass, sped up 3×. The pauses while it thinks between moves aren't in the recording. <a href="https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-10-first-pass.mp4">MP4 (real speed)</a></sub></p>
+
+My guess is that the longer run started memorising my 50 demos. Next time I'll save checkpoints more often and pick the best one on the arm.
+
+### It fails on the right side of the table
+
+The reviews kept showing the same thing: tools on the right side of the table were never picked up. To check that, I mapped where the tools sat at the start of all 50 demos against which tools the model got into the box.
+
+<p align="center"><img src="media/2026-11-10-coverage-map.jpg" width="560" alt="Overhead view with white dots for tool positions in the demos, green circles for tools the model got into the box and red circles for tools it left; the dots and green circles are on the left and centre, and only red circles are on the right"></p>
+
+Only 8% of the tool positions in my demos were on the right side. Every tool it got into the box came from the left and centre, where the demos are dense. So the model isn't broken; I just never showed it the right side of the table.
+
+### Smaller things
+
+- The wrist camera's plug was loose at the camera end. I reseated it, but the camera still dropped twice that evening.
+- After I interrupted a run while the model was loading, the old process kept running in the background and blocked the next one. The pages now say so plainly.
+- I dropped voice commands from the plan. Getting the task itself reliable comes first.
+
 ## Next
 
-1. Fix the wrist camera's connection.
-2. Run the trained model on the arm.
-3. Score 20 attempts and compare the two checkpoints.
-4. Add voice commands.
+1. Record data for the gaps: tools on the right side, at the far left by the cables, and touching each other. I'll do it with corrections where it hesitates, new demos, or both.
+2. Retrain on the old and new data, saving checkpoints more often, and pick the best one on the arm.
+3. Score 20 trials.
