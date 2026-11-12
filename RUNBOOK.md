@@ -1,6 +1,6 @@
 # Runbook: SO-101 + π0.5
 
-Work from top to bottom. The flags were checked against LeRobot 0.6.2. Steps 1–4 (access, hardware, cameras, recording and replay) and steps 6–7 (running and scoring the model) have been run on the arm, and step 5 has been run in the cloud. Step 8 hasn't been run yet.
+Work from top to bottom. The flags were checked against LeRobot 0.6.2. Steps 1–4 (access, hardware, cameras, recording and replay), steps 6–7 (running and scoring the model) and step 8's extra demos have been run on the arm, and step 5 has been run in the cloud. Step 8's correction mode hasn't been run yet.
 
 ## Before you start
 
@@ -94,6 +94,7 @@ I record with a small page I built, [`tools/record_ui.py`](tools/record_ui.py). 
 - Every result goes into `episode_labels.csv` inside the dataset, which is uploaded with it.
 - Ctrl+C keeps every saved episode and uploads them. Running the same command again continues the same dataset, and earlier passes count toward the target.
 - At the end it prints the flag that skips the failed episodes in training, e.g. `--dataset.exclude_episodes="[2, 12]"`.
+- The page checks which camera is which (only the overhead one sees the wall) at start and again every time you press **A**, with the arm in its start pose. A check only at start can be fooled: after a crash left the arm limp, the wrist camera faced the wall and 27 episodes were recorded with the views swapped.
 - `--dataset.no_stamp=true` keeps the dataset name exactly as given. Without it LeRobot adds a date-time stamp, and the replay and train commands below wouldn't find the data.
 
 Try the page without the robot: `python tools/record_ui.py --demo`. Practise with the real arm and cameras, without touching your datasets or uploading anything: `tools/practice.sh`.
@@ -186,6 +187,27 @@ hf jobs cancel <job-id>
 
 `--save_checkpoint_to_hub=true` matters: without it, a job that hits its timeout loses everything. Each checkpoint is about 24.5 GB on the Hub (9.4 GB model plus 15.1 GB optimizer state), so the run adds about 58 GB. Check your Hub storage limit first; mine is 100 GB for private repos. Once you've picked a checkpoint and don't need to resume, its optimizer state can go.
 
+### Retrain on more data
+
+Training is expensive (about $5 an hour on an H200, about 7 hours for 120 demos), so check the data first (step 8) and run it once.
+
+[`tools/train_cloud.sh`](tools/train_cloud.sh) is the same pinned job, with two changes for a bigger dataset:
+
+- `EXCLUDE` lists the episodes to leave out (failed ones, and any that break the routine).
+- Checkpoints stay inside the job, and at the end only the model part (9.4 GB each) of the last three is uploaded. With optimizer state each checkpoint is 24.5 GB, which wouldn't fit a 100 GB storage limit.
+
+Pick `STEPS` for about 2.5–3 passes over the kept frames: 2.8 × frames ÷ 32. Here that's 11,000 steps for 125,639 frames. Print the job first, then start it:
+
+```bash
+EXCLUDE="[2, 12, ...]" STEPS=11000 bash tools/train_cloud.sh --dry-run
+```
+
+```bash
+EXCLUDE="[2, 12, ...]" STEPS=11000 bash tools/train_cloud.sh
+```
+
+Nothing reaches the Hub until the end, so a crash late in the run loses it.
+
 If the job times out, the saved checkpoints are under `checkpoints/` in the model repo. I haven't had to resume a run, so I haven't tested a resume command with this setup.
 
 ## 6. Run it on the arm
@@ -250,9 +272,17 @@ python tools/review_trials.py $HF_USER/rollout_so101_tools_toolbox_<timestamp>
 
 It marks each trial's picks (the gripper is told to close but a tool holds it open), releases, stretches of 12 s or more without a pick, and your M marks on the camera frames. It writes an image per trial and a `review.md` with a notes line per trial into `media/private/reviews/` (git ignores `media/private/`). The drawings are for people: don't put them in a training dataset.
 
-## 8. Record corrections where it fails
+## 8. Add data where it fails
 
-Not run yet. LeRobot's DAgger mode runs the model with the leader arm connected. Press **Space** to pause the model; the leader is driven to the follower's position. Press **Tab** and take over to finish the grasp, **Tab** again to end the correction, then **Space** to hand back. Each correction is saved as its own episode:
+### More demos (done)
+
+Use the review and coverage map from step 7 to place tools where the model fails, and record with the step 4 command (it continues the same dataset). Here that meant tools on the right and front right, then left of and in front of the box, plus touching tools and strips at different angles. Keep one routine: screwdriver first, one tool at a time, straight to each tool, slow straight-down grasp. Keep the scene fixed: same background, toolbox taped to the same spot as in the old demos.
+
+Then check every episode before training. Here the limits came from the old demos' worst 5%: a hover of 3 s or more, more than 13 s with no tool in hand, or more than 2 grabs at nothing. Each episode also needs the right scene, one tool per grab, and all four tools in the box. Count a grasp by arm travel, not jaw opening: a strip held by its edge leaves the jaws almost shut. 83 of 103 new episodes passed.
+
+### Corrections (not run yet)
+
+LeRobot's DAgger mode runs the model with the leader arm connected. Press **Space** to pause the model; the leader is driven to the follower's position. Press **Tab** and take over to finish the grasp, **Tab** again to end the correction, then **Space** to hand back. Each correction is saved as its own episode:
 
 ```bash
 lerobot-rollout --strategy.type=dagger --policy.path=outputs/ckpts/checkpoints/003500/pretrained_model --robot.type=so101_follower --robot.port=$FOLLOWER_PORT --robot.id=follower --robot.cameras="$CAMERAS" --teleop.type=so101_leader --teleop.port=$LEADER_PORT --teleop.id=leader --dataset.repo_id=$HF_USER/rollout_so101_tools_toolbox_corrections --dataset.num_episodes=20 --dataset.single_task="$TASK" --dataset.private=true --device=mps
@@ -275,6 +305,7 @@ Aim the corrections at what the reviews show it can't do yet. Here that means to
 | `FileExistsError` when recording starts | An earlier run stopped before saving its first episode and left an empty dataset folder. The recording page removes it automatically. With plain `lerobot-record`, delete that empty folder, or continue a folder that has episodes with `--resume=true --dataset.root=<its folder>`. |
 | `Dataset names for rollout must start with 'rollout_'` | Name `lerobot-rollout` result datasets `rollout_...`. |
 | macOS finds 0 cameras ("not authorized to capture video") | Allow your terminal app in System Settings → Privacy & Security → Camera, then quit and reopen it. |
+| Recorded episodes have the overhead and wrist views swapped | Compare wall brightness in each episode's top and wrist video (the overhead view's top fifth is much brighter). To repair without re-recording, copy that session's video files into the other camera's folder under new file numbers and point the episodes' video columns in `meta/episodes` at them. Back up the metadata first. |
 | `No status packet` at startup | Run the same command again. This cleared on retry here before. |
 | `Overload error` on a motor | Stop and cut DC power, then check for a jam or a pinched cable. The elbow did this once and the cause was never found. |
 | `` `ema`: Could not decode the value `` (or another config key) when a cloud job starts | The cloud image runs a newer LeRobot than your Mac. Submit with the pinned `hf jobs run` command in step 5. |

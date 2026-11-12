@@ -119,6 +119,13 @@ def record_loop(**kw):
                  decided=None, started=None, cameras=list(cameras))
     while state["phase"] == "ready":  # arms follow the leader, nothing is recorded
         orig_record_loop(**{**kw, "dataset": None, "timer": None, "control_time_s": 60})
+    # Check again at A: the arm is at its start pose, wrist camera looking down. The check at startup can be
+    # fooled when a limp arm leaves the wrist camera facing the wall (Nov 11: episodes 67-93 recorded swapped).
+    try:
+        match_cameras(kw["robot"].cameras)
+    except RuntimeError:
+        pass  # too close to call right now: keep the slots chosen at startup
+    cameras.update(kw["robot"].cameras)
     with lock:
         events["exit_early"] = bool(state["decided"])  # A's signal is used up; a B/C/D pressed right after A still ends the episode
     orig_record_loop(**kw)  # records until B, C or D, or the episode time limit
@@ -353,8 +360,10 @@ def selftest():
     start()
     post("b"); until("ready")  # episode 1: passed
     assert (state["passed"], state["failed"], state["last"]) == (1, 1, "b")
+    cameras["top"].wall, cameras["wrist"].wall = 40, 140  # slots swapped mid-session
     start(); until("ready")  # episode 2: no B or C before the 0.5 s limit
     assert (state["passed"], state["failed"], state["last"]) == (1, 2, "timeout")
+    assert cameras["top"].wall == 140  # A put the cameras back in the right slots
     for _ in range(2):  # episodes 3 and 4: passes; the third pass ends the session
         until("ready"); start(); post("b")
     until("done")
