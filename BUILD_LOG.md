@@ -221,8 +221,54 @@ Only 8% of the tool positions in my demos were on the right side. Every tool it 
 - After I interrupted a run while the model was loading, the old process kept running in the background and blocked the next one. The pages now say so plainly.
 - I dropped voice commands from the plan. Getting the task itself reliable comes first.
 
+## November 11: filling the gaps, checking every episode, retraining
+
+### The wrist camera: it's the cable
+
+Securing the plug didn't fix the dropouts: a 10-minute test still dropped after 80 seconds. Swapping the two cameras between hub sockets settled it, because ***the drops followed the wrist camera, not the socket***. So it's that camera's cable or plug, and a new cable is on the list. Until then a drop just ends the episode being recorded, and the page picks up where it left off.
+
+### 103 new demos where the model failed
+
+Two batches. First, tools on the right and front right of the box, where the first model never got a tool. Then tools left of and in front of the box, plus touching tools and strips at different angles. Every demo follows ***one routine***: screwdriver first, one tool at a time, straight to each tool, a slow straight-down grasp.
+
+The scene changed a little too. I took the cables and power strip out of the overhead view, and put the toolbox back on its exact spot from the old demos (lined up against an outline from an old frame), then taped it.
+
+### A bug that would have spoiled 27 demos
+
+A wrist camera drop crashed the recording page and the arm went limp. When the page restarted, the wrist camera happened to face the wall, and my camera check (which looks for the bright wall) put the two views in each other's slots. ***27 episodes were recorded swapped.***
+
+<p align="center"><img src="media/2026-11-11-camera-swap-check.png" width="760" alt="Two scatter plots of wall brightness, top slot minus wrist slot, for every episode. As recorded: episodes 67 to 93 are negative, meaning swapped. After the repair: every episode is positive."></p>
+
+I found them by running the wall test on every episode. They didn't need re-recording: I copied their videos into the right camera folders and pointed those episodes at the copies. The recording page now rechecks the cameras every time A is pressed, when the arm is in its start pose.
+
+### Checking every episode
+
+Training is expensive, so every episode was checked before training. Each limit comes from the old 50 demos' worst 5%: a hover of 3 s or more, more than 13 s with no tool in hand, or more than 2 grabs at nothing. On top of that, each episode needs the right scene and box spot, the screwdriver first, one tool at a time, and all four tools in the box. Every frame was also checked for camera freezes, joint glitches and dropped frames.
+
+<p align="center"><img src="media/2026-11-11-qa-limits.png" width="560" alt="Scatter plot of 103 new episodes: longest hover against longest stretch with no tool. 83 kept episodes sit inside both limits; 5 failed by crossing a limit; 15 failed another check such as a double grab or tool order."></p>
+
+One lesson: a thin strip is pinched by its edge, so a gripper holding one reads almost the same as an empty gripper. My first grasp counter called those grabs at nothing and wrongly failed six good demos. Counting by arm travel fixed it: a close that travels is a carry, a close that stays put is a miss.
+
+<p align="center"><img src="media/2026-11-11-gripper-strip-vs-miss.png" width="760" alt="Gripper opening over one episode, commanded and measured. Holding the screwdriver reads about 7, holding a strip by its edge about 4.4, and closed on nothing about 2."></p>
+
+Double grabs were caught by counting the tools left on the table after each trip, then confirmed in the wrist view.
+
+<p align="center"><img src="media/2026-11-11-double-grab.jpg" width="560" alt="Two wrist camera frames: one strip in the gripper, kept; two stacked strips in the gripper, failed."></p>
+
+Of the 103 new episodes, 83 passed. Two old ones failed too, both double grabs.
+
+### Picking the training set
+
+My first pick kept only the old demos that also started with the screwdriver. That threw away most of the examples left of the box, so I cancelled that run after 5 minutes. The final set keeps every old demo with the box on its spot, whatever the tool order: 37 old plus 83 new, ***120 demos***.
+
+<p align="center"><img src="media/2026-11-11-coverage-before-after.jpg" width="760" alt="Tool start positions on the table. Before: 50 demos, 8 percent right of the box, dense on the left. Now: 120 demos, 40 percent right of the box, with the left side still covered."></p>
+
+### Retraining
+
+A training run costs about $37 on a rented H200, so before starting I compared the cloud copy of the dataset byte for byte with the files I'd checked. I also ran the job script on my Mac with stand-ins for the GPU parts, which caught a cleanup timer that outlived the job. A second bug slipped through: a cleanup command lost its quote marks on the way to the cloud, so the running job deletes no old checkpoints. That's harmless here because the job has 3 TB of disk, and the script in `tools/` is fixed. Each checkpoint with its optimizer state is 24.5 GB, so the job uploads only the model part of the last three (9,000, 10,000 and 11,000 steps). It's training now: 120 episodes, about 2.8 passes over the data, about 7 hours.
+
 ## Next
 
-1. Record data for the gaps: tools on the right side, at the far left by the cables, and touching each other. I'll do it with corrections where it hesitates, new demos, or both.
-2. Retrain on the old and new data, saving checkpoints more often, and pick the best one on the arm.
-3. Score 20 trials.
+1. Score the 9,000, 10,000 and 11,000 step checkpoints on the same 20 fixed tool layouts, and keep the best.
+2. Replace the wrist camera cable.
+3. If it still fails at specific spots, record a small batch or corrections there.

@@ -14,6 +14,7 @@
   <a href="#status">Status</a> ·
   <a href="#first-results">Results</a> ·
   <a href="#recording-demonstrations">Recording</a> ·
+  <a href="#checking-the-data">Data checks</a> ·
   <a href="#problems-solved">Problems solved</a> ·
   <a href="#the-build">Build</a> ·
   <a href="BUILD_LOG.md">Build log</a> ·
@@ -24,11 +25,12 @@
 
 - ***Built:*** two [SO-101](https://github.com/TheRobotStudio/SO-ARM100) arms (a leader moved by hand, a follower that copies it) and two cameras.
 - ***Taught:*** 50 demonstrations, then fine-tuned [π0.5](https://www.physicalintelligence.company/blog/pi05) with [Hugging Face LeRobot](https://github.com/huggingface/lerobot).
-- ***Result:*** <ins>**about half the tools into the box, one full pass.**</ins>
+- ***Fixed the data:*** 103 more demos where it failed, every episode checked, <ins>**120 kept for retraining**</ins>.
+- ***Result so far:*** <ins>**about half the tools into the box, one full pass.**</ins> Retraining now.
 
 ## Status
 
-Updated November 10, 2026.
+Updated November 11, 2026.
 
 | Step | Status |
 | --- | --- |
@@ -40,8 +42,10 @@ Updated November 10, 2026.
 | Fine-tune π0.5 | ✅ Done |
 | Run on the arm | ✅ First full pass |
 | Scoring and review tools | ✅ Done |
-| More data where it fails | 🔄 Next |
-| Retrain, score 20 trials | ⏳ After that |
+| More data where it fails | ✅ 103 new demos |
+| Check every episode | ✅ 120 kept |
+| Retrain on 120 demos | 🔄 Training |
+| Score 20 trials | ⏳ Next |
 
 > [!NOTE]
 > The wrist camera still drops off USB at times, and macOS can then swap the two cameras' numbers. The tools detect this and fix it before the arm moves.
@@ -111,6 +115,37 @@ Updated November 10, 2026.
 
 A small [recording page](tools/record_ui.py) replaces LeRobot's keyboard shortcuts: ***one key starts a take, others mark pass, fail or redo***. It resumes where it left off. Commands: [runbook](RUNBOOK.md#4-record-demonstrations).
 
+## Checking the data
+
+Training runs on a rented cloud GPU and is ***expensive*** (about $37 a run), so <ins>**every episode was checked before training**</ins>: every frame, the joints, and a look at each one. Details in the [build log](BUILD_LOG.md#november-11-filling-the-gaps-checking-every-episode-retraining).
+
+<table>
+  <tr>
+    <th width="50%">Where the tools started</th>
+    <th width="50%">Every new episode vs the limits</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="media/2026-11-11-coverage-before-after.jpg" width="100%" alt="Tool start positions. Before: 50 demos, 8 percent right of the box. Now: 120 demos, 40 percent right of the box, left side still covered"></td>
+    <td align="center"><img src="media/2026-11-11-qa-limits.png" width="100%" alt="Scatter of 103 new episodes, longest hover against longest stretch with no tool: 83 kept inside both limits, 5 over a limit, 15 failed another check"></td>
+  </tr>
+  <tr>
+    <td><sub><b>8% → 40%</b> of tools right of the box, the spot the first model never solved.</sub></td>
+    <td><sub>Limits from the old demos' worst 5%. <b>83 of 103 kept</b>; the rest hovered, searched, grabbed two tools, or broke the routine.</sub></td>
+  </tr>
+  <tr>
+    <th>Finding swapped cameras</th>
+    <th>Strip grasp or miss?</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="media/2026-11-11-camera-swap-check.png" width="100%" alt="Wall brightness, top slot minus wrist slot, per episode: episodes 67 to 93 negative as recorded, all positive after the repair"></td>
+    <td align="center"><img src="media/2026-11-11-gripper-strip-vs-miss.png" width="100%" alt="Gripper opening over one episode: about 7 holding the screwdriver, about 4.4 holding a strip by its edge, about 2 closed on nothing"></td>
+  </tr>
+  <tr>
+    <td><sub>Only the overhead camera sees the bright wall. <b>27 episodes</b> were recorded swapped, then repaired without re-recording.</sub></td>
+    <td><sub>A strip held by its edge reads almost like an empty gripper, so grasps are counted by <b>arm travel</b>, not jaw opening.</sub></td>
+  </tr>
+</table>
+
 ## Problems solved
 
 Full story in the [build log](BUILD_LOG.md).
@@ -122,6 +157,10 @@ Full story in the [build log](BUILD_LOG.md).
 - **Cloud model wouldn't load: <ins>version mismatch.</ins>** A cheap test job caught renamed weights in a newer LeRobot. Pinning the cloud to the Mac's versions fixed it.
 - **Arms didn't line up: <ins>uneven calibration sweeps.</ins>** A joint's zero is the middle of its swept range. Matching the sweeps cut the gap from ~7° to under 0.5°.
 - **Startup lurch: <ins>motors on before a target was set.</ins>** Fixed the order; tests reproduce the bug first.
+- **27 demos recorded swapped: <ins>a limp arm fooled the camera check.</ins>** After a crash the wrist camera faced the wall at restart. Found with a wall test on every episode, repaired without re-recording; the page now rechecks at every take.
+- **Good grasps counted as misses: <ins>thin strips.</ins>** A strip pinched by its edge leaves the jaws almost shut. Counting by arm travel instead restored 6 wrongly failed demos.
+- **A training set that lost the left side: <ins>too strict a filter.</ins>** Keeping only old demos with the same tool order dropped most left-side examples. Keeping every old demo with the box on its spot fixed it.
+- **A costly run is checked before it starts.** The cloud copy is byte-compared with the checked files, and the job script is run locally with stand-ins first. That caught a cleanup timer that outlived the job.
 - **Data checked before training.** Caught a hand and a laptop screen in view, and a frame bug in the review script.
 
 ## The build
@@ -166,10 +205,11 @@ Full story in the [build log](BUILD_LOG.md).
 
 1. ***Show:*** steer the follower with the leader.
 2. ***Record:*** both camera videos, joint angles, pass or fail.
-3. ***Train:*** fine-tune π0.5 on the passes, in the cloud.
-4. ***Run:*** the model drives the arm from the Mac.
-5. ***Score:*** [eval page](tools/eval_ui.py) for results, [review tool](tools/review_trials.py) for every pick, drop and stall.
-6. ***Repeat:*** more data where it fails, retrain, publish results, failures included.
+3. ***Check:*** every episode against limits from the best demos; failures are left out.
+4. ***Train:*** fine-tune π0.5 on the passes, in the cloud ([script](tools/train_cloud.sh)). Expensive, so it runs once the data is clean.
+5. ***Run:*** the model drives the arm from the Mac.
+6. ***Score:*** [eval page](tools/eval_ui.py) for results, [review tool](tools/review_trials.py) for every pick, drop and stall.
+7. ***Repeat:*** more data where it fails, retrain, publish results, failures included.
 
 Every command: [runbook](RUNBOOK.md).
 
