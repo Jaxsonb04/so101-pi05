@@ -1,5 +1,6 @@
 #!/bin/bash
-# Retrain π0.5 on Hugging Face Jobs (H200) with the pinned LeRobot/transformers that the Mac runs.
+# Retrain π0.5 on Hugging Face Jobs (H200). LeRobot and transformers are pinned to the Mac's versions;
+# torch and CUDA come from the lerobot-gpu image.
 #   source so101.env
 #   EXCLUDE="[2, 12, ...]" bash tools/train_cloud.sh            # add --dry-run to print the job without starting it
 # EXCLUDE lists the episodes to leave out (failed or off-rule demos). STEPS should be ~2.5-3 passes over the
@@ -9,6 +10,8 @@
 set -e
 : "${DATASET:?source so101.env first}" "${POLICY:?source so101.env first}" "${EXCLUDE:?set EXCLUDE to a list like [2, 12]}"
 STEPS=${STEPS:-11000}
+# checkpoints are saved every 1000 steps, so the three to upload only exist for whole thousands
+if [ $((STEPS % 1000)) -ne 0 ] || [ "$STEPS" -lt 3000 ]; then echo "STEPS must be a multiple of 1000, at least 3000"; exit 1; fi
 KEEP=$(for k in 2 1 0; do printf '"%06d", ' $((STEPS - k * 1000)); done)
 REPO=${POLICY}_v2
 
@@ -29,17 +32,22 @@ while true; do
   done
 done) &
 PRUNE=$!
-lerobot-train "$@" --output_dir=$OUT
+STATUS=0
+lerobot-train "$@" --output_dir=$OUT || STATUS=$?  # on a crash, still upload the checkpoints it saved
 kill $PRUNE  # so nothing keeps the job (and its billing) alive after training
 python - <<EOF
+import os
 from huggingface_hub import HfApi
 api = HfApi()
 api.create_repo("'"$REPO"'", private=True, exist_ok=True)
 for s in ('"$KEEP"'):
+    if not os.path.isdir(f"outputs/pi05_v2/checkpoints/{s}/pretrained_model"):
+        print("not saved, skipping", s, flush=True); continue
     api.upload_folder(folder_path=f"outputs/pi05_v2/checkpoints/{s}/pretrained_model",
                       repo_id="'"$REPO"'", path_in_repo=f"checkpoints/{s}/pretrained_model")
     print("uploaded", s, flush=True)
-EOF' _ \
+EOF
+exit $STATUS' _ \
   --dataset.repo_id=$DATASET \
   --dataset.exclude_episodes="$EXCLUDE" \
   --dataset.image_transforms.enable=true \

@@ -124,7 +124,7 @@ def record_loop(**kw):
     try:
         match_cameras(kw["robot"].cameras)
     except RuntimeError:
-        pass  # too close to call right now: keep the slots chosen at startup
+        pass  # too close to call right now: keep the current slots
     cameras.update(kw["robot"].cameras)
     with lock:
         events["exit_early"] = bool(state["decided"])  # A's signal is used up; a B/C/D pressed right after A still ends the episode

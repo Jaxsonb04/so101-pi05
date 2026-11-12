@@ -196,7 +196,7 @@ Training is expensive (about $5 an hour on an H200, about 7 hours for 120 demos)
 - `EXCLUDE` lists the episodes to leave out (failed ones, and any that break the routine).
 - Checkpoints stay inside the job, and at the end only the model part (9.4 GB each) of the last three is uploaded. With optimizer state each checkpoint is 24.5 GB, which wouldn't fit a 100 GB storage limit.
 
-Pick `STEPS` for about 2.5–3 passes over the kept frames: 2.8 × frames ÷ 32. Here that's 11,000 steps for 125,639 frames. Print the job first, then start it:
+Pick `STEPS` for about 2.5–3 passes over the kept frames: 2.8 × frames ÷ 32, rounded to a multiple of 1,000 (checkpoints are saved every 1,000 steps, and the script refuses other values). Here that's 11,000 steps for 125,639 frames. Print the job first, then start it:
 
 ```bash
 EXCLUDE="[2, 12, ...]" STEPS=11000 bash tools/train_cloud.sh --dry-run
@@ -206,7 +206,7 @@ EXCLUDE="[2, 12, ...]" STEPS=11000 bash tools/train_cloud.sh --dry-run
 EXCLUDE="[2, 12, ...]" STEPS=11000 bash tools/train_cloud.sh
 ```
 
-Nothing reaches the Hub until the end, so a crash late in the run loses it.
+Nothing reaches the Hub until training ends. If training crashes, the script still uploads whichever of the three it saved; a job that hits the 9-hour limit loses everything.
 
 If the job times out, the saved checkpoints are under `checkpoints/` in the model repo. I haven't had to resume a run, so I haven't tested a resume command with this setup.
 
@@ -278,7 +278,7 @@ It marks each trial's picks (the gripper is told to close but a tool holds it op
 
 Use the review and coverage map from step 7 to place tools where the model fails, and record with the step 4 command (it continues the same dataset). Here that meant tools on the right and front right, then left of and in front of the box, plus touching tools and strips at different angles. Keep one routine: screwdriver first, one tool at a time, straight to each tool, slow straight-down grasp. Keep the scene fixed: same background, toolbox taped to the same spot as in the old demos.
 
-Then check every episode before training. Here the limits came from the old demos' worst 5%: a hover of 3 s or more, more than 13 s with no tool in hand, or more than 2 grabs at nothing. Each episode also needs the right scene, one tool per grab, and all four tools in the box. Count a grasp by arm travel, not jaw opening: a strip held by its edge leaves the jaws almost shut. 83 of 103 new episodes passed.
+Then check every episode before training. Here the limits came from the old demos' worst 5%: a hover of 3 s or more, more than 13 s with no tool in hand, or more than 2 grabs at nothing. Each episode also needs the right scene, one tool per grab, and all four tools in the box. Count a close as a grasp when the jaws stay at least 3.8 open for 1 s (a tool holds them apart), or when the arm travels at least 15° while the gripper stays closed. A strip held by its edge leaves the jaws almost shut, so jaw opening alone misses it. 83 of 103 new episodes passed.
 
 ### Corrections (not run yet)
 
