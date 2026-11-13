@@ -267,8 +267,51 @@ My first pick kept only the old demos that also started with the screwdriver. Th
 
 A training run costs about $37 on a rented H200, so before starting I compared the cloud copy of the dataset byte for byte with the files I'd checked. I also ran the job script on my Mac with stand-ins for the GPU parts, which caught a cleanup timer that outlived the job. A second bug slipped through: a cleanup command lost its quote marks on the way to the cloud, so the running job deletes no old checkpoints. That's harmless here because the job has 3 TB of disk, and the script in `tools/` is fixed. Each checkpoint with its optimizer state is 24.5 GB, so the job uploads only the model part of the last three (9,000, 10,000 and 11,000 steps). It's training now: 120 episodes, about 2.8 passes over the data, about 7 hours.
 
+## November 12: the retrained model on 20 fixed layouts
+
+### A fair test
+
+Training finished overnight: 11,000 steps, with the loss ending at 0.013 like the first run, and the last three checkpoints uploaded. To compare checkpoints fairly, each one gets ***the same 20 tool layouts, in the same order***: 5 near the box on the left and front (like the first demos), 5 on the right (where the first model never got a tool in), 4 far left, and 6 mixed or hard ones, such as touching tools or a tool in every corner. The rules are the same for every trial: hands off, 90 seconds, and a pass only when all four tools are in the box.
+
+The recordings give the layouts for free. Every trial starts with the arm at its start pose, so ***its first overhead frame is a picture of the layout***. I set up the next checkpoints from those frames. I took screenshots at first, which was slower, and one caught the arm mid-move.
+
+<p align="center"><img src="media/2026-11-12-layouts-results.jpg" width="760" alt="The 20 test layouts, as each trial's first overhead frame, labelled with the zone and the tools that ended in the box. Layouts 2, 9 and 10 are passes, in green; the other 17 are fails, in amber."></p>
+
+### Results: the 11,000-step checkpoint
+
+<ins>**3 of 20 passes, 42 of 80 tools in the box, 2.1 per trial.**</ins> The first model got 2.2 per trial on easier layouts, so 2.4× the data didn't move the overall score.
+
+| Zone | Layouts | Tools in the box | Passes |
+| --- | --- | --- | --- |
+| Left and front | 1–5 | 10 / 20 | 1 |
+| **Right** | 6–10 | **14 / 20** | **2** |
+| Far left | 11–14 | 8 / 16 | 0 |
+| Mixed and hard | 15–20 | 10 / 24 | 0 |
+
+***The right side is fixed.*** The first model never got a tool in from there. Now it's the best zone.
+
+### Every failure is the same
+
+All 17 failures end the same way. After the first one to three tools, the arm hovers over a strip right in front of its jaws and closes on air, again and again, for the rest of the trial: 40 seconds is typical, and one went 61. Failed trials had 19 to 35 gripper closes, passes 12 to 20. The screwdriver usually made it in; the strips are what was left. The first model failed the same way on November 10.
+
+<p align="center"><img src="media/2026-11-12-strip-stall.jpg" width="760" alt="Eight wrist camera frames from failed trials, each taken during the long stall: in every one a bit strip sits right in front of or between the gripper jaws."></p>
+
+### Problems noticed
+
+- **The strip stall,** above. Most stalls happen on the left, often over strips near the box's left edge or near the arm's base.
+- **The arm pushed the toolbox** out of place in at least 2 trials, which spoils the rest of the trial.
+- **Two crashes ended eval runs,** and the page restarted its count at zero each time. Every trial was still saved, but keeping track of the layout number by hand was error-prone. The eval page now has `--continue`: it counts the trials already saved for that checkpoint and shows the next layout number. I didn't capture what caused the crashes.
+- **A 90-second trial records about 65 seconds of video** in plain mode, because the arm pauses while the model computes its next moves.
+- **The wrist camera cable** still needs replacing.
+
+### Takeaways
+
+1. More data fixed the spot it was aimed at, the right side, but didn't raise the overall score.
+2. The bottleneck is one skill: finishing a strip grasp. A different checkpoint is unlikely to fix that, since all three come from the last 20% of training.
+3. The fix is data at the moment of failure: corrections where it hovers over a strip, then a retrain.
+
 ## Next
 
-1. Score the 9,000, 10,000 and 11,000 step checkpoints on the same 20 fixed tool layouts, and keep the best.
-2. Replace the wrist camera cable.
-3. If it still fails at specific spots, record a small batch or corrections there.
+1. Score the 10,000 and 9,000 step checkpoints on the same 20 layouts, and keep the best.
+2. Record corrections where it stalls on a strip (DAgger), especially near the box's left edge and the arm's base, then retrain.
+3. Replace the wrist camera cable.

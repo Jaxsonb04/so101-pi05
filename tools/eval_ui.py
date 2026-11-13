@@ -11,12 +11,16 @@ every trial, and holds it there while you reset the scene.
 - Every trial is saved in the rollout dataset; its result goes in trial_labels.csv there.
 - --dataset.num_episodes is the number of judged trials (pass or fail); stopped ones are extra.
 - If a trial reaches --dataset.episode_time_s, the arm goes home and the page asks 0-4 (4 = pass).
+- --continue: after a crash or restart, count the judged trials already saved by earlier runs of the
+  same --dataset.repo_id (each run gets its own _<date>_<time> folder); --dataset.num_episodes is then
+  the total over all those runs, and the page shows the next layout number.
 
-    python tools/eval_ui.py <the lerobot-rollout flags, without --teleop.*>
+    python tools/eval_ui.py <the lerobot-rollout flags, without --teleop.*> [--continue]
     python tools/eval_ui.py --demo       # try the page without the robot
     python tools/eval_ui.py --selftest   # automated check, no robot
 """
 
+import json
 import sys
 import tempfile
 import threading
@@ -35,6 +39,23 @@ RESULT = {"b": "pass", "c": "fail", "d": "stopped"}
 state, events = ui.state, ui.events
 state.update(stopped=0, trial=0, count=None, marks=[], tools=0)
 ui.KEYS.update("01234m")  # tools-in-box count and the mark key
+
+
+def earlier_runs(repo_id, home=None):
+    """Judged rows ([index, result, tools, marks]) saved by earlier runs of this --dataset.repo_id."""
+    # shortcut: ignores --dataset.root; the eval commands never set it
+    if home is None:
+        from lerobot.utils.constants import HF_LEROBOT_HOME as home  # where LeRobot saves every run
+    home = Path(home)
+    user, name = repo_id.split("/", 1)
+    rows = []
+    for run in sorted((home / user).glob(f"{name}_2*")):  # <name>_<date>_<time>, one folder per run
+        labels, info = run / LABELS, run / "meta" / "info.json"
+        if labels.exists() and info.exists():
+            saved = json.loads(info.read_text())["total_episodes"]  # same rule as the upload: saved trials only
+            rows += [(r.split(",") + ["", ""])[:4] for r in labels.read_text().splitlines()[1:]
+                     if int(r.split(",")[0]) < saved]
+    return [r for r in rows if r[1] in ("pass", "fail")]
 
 
 def press(key):
@@ -217,6 +238,15 @@ def selftest():
         raise AssertionError("an unclear case must stop, not guess")
     except RuntimeError as e:
         assert "apart" in str(e)
+
+    home = Path(tempfile.mkdtemp())  # --continue: earlier runs of one repo_id, each in its own folder
+    for name, labels, saved in [("rollout_x_20261112_205541", ["0,fail,2,", "1,pass,4,1.5"], 2),
+                                ("rollout_x_20261112_215951", ["0,fail,1,", "1,stopped,,", "2,fail,3,"], 2),  # 2 never saved
+                                ("rollout_x_extra_20261112_220000", ["0,pass,4,"], 1)]:  # another name
+        (home / "me" / name / "meta").mkdir(parents=True)
+        (home / "me" / name / "meta" / "info.json").write_text(json.dumps({"total_episodes": saved}))
+        (home / "me" / name / LABELS).write_text("\n".join([HEADER, *labels]) + "\n")
+    assert [r[1:3] for r in earlier_runs("me/rollout_x", home)] == [["fail", "2"], ["pass", "4"], ["fail", "1"]]
     print("selftest OK")
 
 
@@ -228,6 +258,17 @@ def main():
         sys.exit("Leave out the --teleop.* flags: without a leader the arm returns home after every trial.")
     flag = next((a.split("=", 1)[1] for a in args if a.startswith("--dataset.num_episodes=")), None)
     state["target"] = int(flag) if flag else None
+    repo = next((a.split("=", 1)[1] for a in args if a.startswith("--dataset.repo_id=")), None)
+    if "--continue" in args:
+        sys.argv.remove("--continue")  # the page's own flag; LeRobot would reject it
+        if not repo:
+            sys.exit("--continue needs --dataset.repo_id, to find the earlier runs.")
+        rows = earlier_runs(repo)
+        state.update(passed=sum(r[1] == "pass" for r in rows), failed=sum(r[1] == "fail" for r in rows),
+                     tools=sum(int(r[2] or 0) for r in rows))
+        if state["target"] and len(rows) >= state["target"]:
+            sys.exit(f"All {len(rows)} judged trials of {repo} are already saved. Nothing left to run.")
+        print(f"Continuing {repo}: {len(rows)} judged trials saved by earlier runs; next is layout {len(rows) + 1}.")
     if args == ["--demo"]:
         install(FakeStrategy)
         state["target"] = 3

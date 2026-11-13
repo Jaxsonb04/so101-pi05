@@ -132,14 +132,14 @@ function render(s) {
   const summary = `${s.passed} passed, ${s.failed} failed, ${s.stopped} stopped${average ? `; ${average}` : ""}.`;
   const [status, prompt] = {
     connecting: ["Starting", "Loading the policy and connecting the arm and cameras (about 2 minutes)…"],
-    ready: ["Ready", "Set the scene with the arm at its start pose, then press A to start trial 1."],
-    running: [`Trial ${s.trial}`, s.limit && s.limit - s.elapsed <= 10
+    ready: ["Ready", `Set up layout ${judged + 1} with the arm at its start pose, then press A.`],
+    running: [`Layout ${judged + 1}`, s.limit && s.limit - s.elapsed <= 10
       ? `${Math.max(0, Math.ceil(s.limit - s.elapsed))} s left, then the arm goes home and you count the tools in the box.`
       : `B pass · C fail · D go home now · M mark this moment for the review. ${marks}`],
     home: ["Going home", "The arm is returning to its start pose…"],
     count: s.decided ? ["How many?", "How many tools ended in the box? Press 0–3."]
       : ["Time's up", "How many tools are in the box? Press 0–4 (4 is a pass)."],
-    reset: [lastStatus, `${before}${marks}Reset the scene, then press A to start trial ${s.trial + 1}.`],
+    reset: [lastStatus, `${before}${marks}Set up layout ${judged + 1}${s.last === "d" ? " again" : ""}, then press A.`],
     starting: ["Starting", "Saving the last trial, then the policy starts…"],
     finishing: [lastStatus, "Last trial done. Saving and uploading…"],
     done: ["Done", summary],
