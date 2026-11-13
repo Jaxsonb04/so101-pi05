@@ -21,7 +21,6 @@ every trial, and holds it there while you reset the scene.
 """
 
 import json
-import os
 import sys
 import tempfile
 import threading
@@ -45,7 +44,9 @@ ui.KEYS.update("01234m")  # tools-in-box count and the mark key
 def earlier_runs(repo_id, home=None):
     """Judged rows ([index, result, tools, marks]) saved by earlier runs of this --dataset.repo_id."""
     # shortcut: ignores --dataset.root; the eval commands never set it
-    home = Path(home or os.getenv("HF_LEROBOT_HOME", Path.home() / ".cache/huggingface/lerobot")).expanduser()
+    if home is None:
+        from lerobot.utils.constants import HF_LEROBOT_HOME as home  # where LeRobot saves every run
+    home = Path(home)
     user, name = repo_id.split("/", 1)
     rows = []
     for run in sorted((home / user).glob(f"{name}_2*")):  # <name>_<date>_<time>, one folder per run
