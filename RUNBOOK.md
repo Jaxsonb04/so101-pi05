@@ -262,6 +262,17 @@ python tools/eval_ui.py --strategy.type=episodic --policy.path=outputs/ckpts/che
 - Results go in `trial_labels.csv` (trial, result, tools in the box, marks) inside the rollout dataset. `lerobot-rollout` only accepts result datasets whose name starts with `rollout_`.
 - The model takes about 2 minutes to load and prints nothing meanwhile. Don't press Ctrl+C then.
 
+### Comparing checkpoints fairly
+
+Score every checkpoint on the same fixed tool layouts, in the same order.
+
+1. **Write the layouts down once,** for example 20 of them: tools near the box, on the right, far left, and mixed. Keep them inside the area the demos covered.
+2. **Score the first checkpoint** by setting up each layout from the list. **No photos are needed:** every trial's recording starts with the arm at its start pose, so its first overhead frame is a picture of the layout. `review_trials.py` (below) saves it as `start_NN.jpg`. Skip the stopped trials, which were redone on the same layout.
+3. **For each next checkpoint,** match the tools to each picture before pressing A. Use a new `rollout_` name for each checkpoint.
+4. **The same rules for every trial:** keep your hands off. Press B as soon as all four tools are in the box; otherwise let the trial run to the time limit, with no early C, so every checkpoint gets the same time. Use D only for problems that aren't the model's fault (a camera drop, a bumped table, a tool placed wrong), then redo the same layout.
+5. **After a crash or a restart,** run the same command with `--continue` added. The page counts the trials already saved under that name and shows the next layout number. `--dataset.num_episodes` is then the total.
+6. **Best = the most passes, then the most tools in the box.**
+
 On the same settings and similar layouts, the final checkpoint got 6 of 20 tools in, and the 3,500-step checkpoint got 11 of 20 with one full pass. One published [SO-101 π0.5 run](https://huggingface.co/Project-IRA/TPSoSe2026_Pi05_LeRobot_SO101_Finetuning_V7_Full_V2) also saw later checkpoints get worse. Always compare.
 
 Then review the run:
@@ -270,7 +281,7 @@ Then review the run:
 python tools/review_trials.py $HF_USER/rollout_so101_tools_toolbox_<timestamp>
 ```
 
-It marks each trial's picks (the gripper is told to close but a tool holds it open), releases, stretches of 12 s or more without a pick, and your M marks on the camera frames. It writes an image per trial and a `review.md` with a notes line per trial into `media/private/reviews/` (git ignores `media/private/`). The drawings are for people: don't put them in a training dataset.
+It marks each trial's picks (the gripper is told to close but a tool holds it open), releases, stretches of 12 s or more without a pick, and your M marks on the camera frames. It writes an image per trial, the trial's clean first overhead frame (`start_NN.jpg`, the layout picture), and a `review.md` with a notes line per trial into `media/private/reviews/` (git ignores `media/private/`). The drawings are for people: don't put them in a training dataset.
 
 ## 8. Add data where it fails
 

@@ -12,7 +12,8 @@
 
 <p align="center">
   <a href="#status">Status</a> ·
-  <a href="#first-results">Results</a> ·
+  <a href="#latest-results">Latest results</a> ·
+  <a href="#first-results">First results</a> ·
   <a href="#recording-demonstrations">Recording</a> ·
   <a href="#checking-the-data">Data checks</a> ·
   <a href="#problems-solved">Problems solved</a> ·
@@ -26,11 +27,11 @@
 - ***Built:*** two [SO-101](https://github.com/TheRobotStudio/SO-ARM100) arms (a leader moved by hand, a follower that copies it) and two cameras.
 - ***Taught:*** 50 demonstrations, then fine-tuned [π0.5](https://www.physicalintelligence.company/blog/pi05) with [Hugging Face LeRobot](https://github.com/huggingface/lerobot).
 - ***Fixed the data:*** 103 more demos where it failed, every episode checked, <ins>**120 kept for retraining**</ins>.
-- ***Result so far:*** <ins>**about half the tools into the box, one full pass.**</ins> Retraining now.
+- ***Retrained and tested:*** 20 fixed layouts, <ins>**3 full passes, 42 of 80 tools in the box**</ins>. The right side is fixed; every failure stalls on a bit strip.
 
 ## Status
 
-Updated November 11, 2026.
+Updated November 12, 2026.
 
 | Step | Status |
 | --- | --- |
@@ -44,11 +45,36 @@ Updated November 11, 2026.
 | Scoring and review tools | ✅ Done |
 | More data where it fails | ✅ 103 new demos |
 | Check every episode | ✅ 120 kept |
-| Retrain on 120 demos | 🔄 Training |
-| Score 20 trials | ⏳ Next |
+| Retrain on 120 demos | ✅ Done |
+| Score 20 fixed layouts | ✅ 3 of 20 passes (11,000 steps) |
+| Score the other two checkpoints | ⏳ Next |
+| Corrections for strip grasps | ⏳ Next |
 
 > [!NOTE]
 > The wrist camera still drops off USB at times, and macOS can then swap the two cameras' numbers. The tools detect this and fix it before the arm moves.
+
+## Latest results
+
+<ins>**The retrained model, 11,000 steps: 3 of 20 passes, 42 of 80 tools in the box (2.1 per trial).**</ins> The first model got 2.2 per trial on easier layouts. Details in the [build log](BUILD_LOG.md#november-12-the-retrained-model-on-20-fixed-layouts).
+
+<p align="center"><img src="media/2026-11-12-layouts-results.jpg" width="760" alt="The 20 test layouts, as each trial's first overhead frame, labelled with the zone and the tools that ended in the box. Layouts 2, 9 and 10 are passes, in green; the other 17 are fails, in amber."></p>
+<p align="center"><sub>Every checkpoint gets the same 20 layouts in the same order. <b>Each trial's first frame is the layout picture</b>, so no photos are needed.</sub></p>
+
+| Zone | Tools in the box | Passes |
+| --- | --- | --- |
+| Left and front | 10 / 20 | 1 |
+| **Right** (the first model's blind spot) | **14 / 20** | **2** |
+| Far left | 8 / 16 | 0 |
+| Mixed and hard | 10 / 24 | 0 |
+
+<p align="center"><img src="media/2026-11-12-strip-stall.jpg" width="760" alt="Eight wrist camera frames from failed trials, each taken during the long stall: in every one a bit strip sits right in front of or between the gripper jaws."></p>
+<p align="center"><sub><b>All 17 failures end like this:</b> a strip right at the jaws, the gripper closing on air for the rest of the trial (40 s typical).</sub></p>
+
+***Takeaways:***
+- **More data fixed its target, the right side,** but didn't raise the overall score.
+- **The bottleneck is one skill: finishing a strip grasp.** The screwdriver usually goes in; the strips are what's left.
+- **Problems noticed:** the stall clusters on the left, the arm pushed the toolbox in 2 trials, and two crashes reset the eval count, now fixed with `--continue`.
+- ***Next:*** score the other two checkpoints, then record corrections where it stalls on a strip and retrain.
 
 ## First results
 
@@ -91,7 +117,7 @@ Updated November 11, 2026.
 <p align="center"><img src="media/2026-11-10-first-pass-joints.png" width="720" alt="Joint angles over the 41-second full pass. Top: shoulder, elbow and wrist angles as the arm reaches and returns. Bottom: gripper measured and commanded; four flat stretches where the measured gripper stays open above the command are the four tools being held."></p>
 <p align="center"><sub><b>Bottom chart:</b> where the black line stays above the orange one, the gripper is closed on a tool. <b><i>Four holds = four tools.</i></b></sub></p>
 
-***Next:*** record data for the spots it misses, then retrain. Details in the [build log](BUILD_LOG.md#november-10-first-runs-on-the-arm-and-finding-out-why-it-fails).
+***Then:*** data for the spots it missed and a retrain, in [Latest results](#latest-results). Details in the [build log](BUILD_LOG.md#november-10-first-runs-on-the-arm-and-finding-out-why-it-fails).
 
 ## Recording demonstrations
 
@@ -162,6 +188,8 @@ Full story in the [build log](BUILD_LOG.md).
 - **A training set that lost the left side: <ins>too strict a filter.</ins>** Keeping only old demos with the same tool order dropped most left-side examples. Keeping every old demo with the box on its spot fixed it.
 - **A costly run is checked before it starts.** The cloud copy is byte-compared with the checked files, and the job script is run locally with stand-ins first. That caught a cleanup timer that outlived the job.
 - **Data checked before training.** Caught a hand and a laptop screen in view, and a frame bug in the review script.
+- **Eval count reset after a crash: <ins>each run gets its own folder.</ins>** The eval page now counts the earlier runs of the same checkpoint and shows the next layout number.
+- **Layout photos: <ins>the recording already has them.</ins>** Each trial starts with the arm at its start pose, so its first overhead frame is the layout picture. No screenshots needed.
 
 ## The build
 
@@ -208,7 +236,7 @@ Full story in the [build log](BUILD_LOG.md).
 3. ***Check:*** every episode against limits from the best demos; failures are left out.
 4. ***Train:*** fine-tune π0.5 on the passes, in the cloud ([script](tools/train_cloud.sh)). Expensive, so it runs once the data is clean.
 5. ***Run:*** the model drives the arm from the Mac.
-6. ***Score:*** [eval page](tools/eval_ui.py) for results, [review tool](tools/review_trials.py) for every pick, drop and stall.
+6. ***Score:*** the same fixed layouts for every checkpoint, on the [eval page](tools/eval_ui.py); the [review tool](tools/review_trials.py) for every pick, drop and stall.
 7. ***Repeat:*** more data where it fails, retrain, publish results, failures included.
 
 Every command: [runbook](RUNBOOK.md).

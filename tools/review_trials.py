@@ -7,7 +7,9 @@ For each trial it finds, from the joint data:
   STUCK    6 s or more with no pick while the arm stayed in a small region (red)
   MARK     moments the operator marked with M on the eval page (yellow)
 and saves one image per trial (overhead | wrist at each moment, labelled) plus review.md
-with the numbers and a "Notes" line per trial, in media/private/reviews/<run>/.
+with the numbers and a "Notes" line per trial, in media/private/reviews/<run>/. It also saves
+start_NN.jpg, each trial's clean first overhead frame: a picture of the tool layout, taken with
+the arm at its start pose, to set up the same layouts when scoring the next checkpoint.
 The drawings are for people: never write them back into a training dataset.
 
     python tools/review_trials.py <repo_id>            # e.g. $HF_USER/rollout_so101_tools_toolbox_<timestamp>
@@ -95,6 +97,8 @@ def review(repo_id):
             it = ds[a + f]
             img = lambda k: (it[f"observation.images.{k}"].permute(1, 2, 0).numpy() * 255).astype(np.uint8)
             tiles.append(tile(img("top"), img("wrist"), f / FPS, kind, detail))
+            if kind == "START":  # the layout as set up, before the arm moves
+                cv2.imwrite(str(out / f"start_{ep:02d}.jpg"), cv2.cvtColor(img("top"), cv2.COLOR_RGB2BGR))
         while len(tiles) % 3:
             tiles.append(np.zeros_like(tiles[0]))
         sheet = np.concatenate([np.concatenate(tiles[k:k + 3], 1) for k in range(0, len(tiles), 3)], 0)
