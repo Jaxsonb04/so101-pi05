@@ -27,11 +27,11 @@
 - ***Built:*** two [SO-101](https://github.com/TheRobotStudio/SO-ARM100) arms (a leader moved by hand, a follower that copies it) and two cameras.
 - ***Taught:*** 50 demonstrations, then fine-tuned [π0.5](https://www.physicalintelligence.company/blog/pi05) with [Hugging Face LeRobot](https://github.com/huggingface/lerobot).
 - ***Fixed the data:*** 103 more demos where it failed, every episode checked, <ins>**120 kept for retraining**</ins>.
-- ***Retrained and tested:*** 20 fixed layouts, <ins>**3 full passes, 42 of 80 tools in the box**</ins>. The right side is fixed; every failure stalls on a bit strip.
+- ***Retrained and tested:*** two checkpoints on 20 fixed layouts, <ins>**a tie at 42 of 80 tools in the box**</ins> (3 and 2 full passes). The right side is fixed; every failure stalls on a grasp.
 
 ## Status
 
-Updated November 12, 2026.
+Updated November 13, 2026.
 
 | Step | Status |
 | --- | --- |
@@ -47,8 +47,9 @@ Updated November 12, 2026.
 | Check every episode | ✅ 120 kept |
 | Retrain on 120 demos | ✅ Done |
 | Score 20 fixed layouts | ✅ 3 of 20 passes (11,000 steps) |
-| Score the other two checkpoints | ⏳ Next |
-| Corrections for strip grasps | ⏳ Next |
+| Score a second checkpoint | ✅ A tie (10,000 steps) |
+| Review every trial | ✅ Done |
+| Corrections where it stalls | ⏳ Next |
 
 > [!NOTE]
 > The wrist camera still drops off USB at times, and macOS can then swap the two cameras' numbers. The tools detect this and fix it before the arm moves.
@@ -72,9 +73,21 @@ Updated November 12, 2026.
 
 ***Takeaways:***
 - **More data fixed its target, the right side,** but didn't raise the overall score.
-- **The bottleneck is one skill: finishing a strip grasp.** The screwdriver usually goes in; the strips are what's left.
+- **The bottleneck is one skill: finishing a grasp.** Mostly strips, and for the second checkpoint the screwdriver too.
 - **Problems noticed:** the stall clusters on the left, the arm pushed the toolbox in 2 trials, and two crashes reset the eval count, now fixed with `--continue`.
-- ***Next:*** score the other two checkpoints, then record corrections where it stalls on a strip and retrain.
+
+### A second checkpoint: a tie
+
+<ins>**The 10,000-step checkpoint on the same 20 layouts: 2 fair passes, 42 of 80 tools.**</ins> It was labelled 3 passes and 43 tools, but one trial started with the screwdriver already in the box. Every trial was reviewed afterwards. Details in the [build log](BUILD_LOG.md#november-13-a-second-checkpoint-and-a-tie).
+
+<p align="center"><img src="media/2026-11-13-layouts-two-checkpoints.jpg" width="760" alt="The 20 test layouts, each labelled with the tools in the box for the 11,000 and the 10,000 step checkpoints. 11,000 passes layouts 2, 9 and 10; 10,000 passes layouts 6, 17 and 20, with layout 20 starred because it started with the screwdriver in the box."></p>
+<p align="center"><sub><b>Same layouts, different results:</b> only 6 of the 19 fair layouts got the same score from both checkpoints.</sub></p>
+
+- **Checkpoint choice doesn't matter.** Both stall the same way: 17 failures each, 40 s typical.
+- **It isn't only strips.** In 5 trials the arm went for the screwdriver and never held it; those scored 0, 0, 0, 2 and 2.
+- **One trial per layout is too noisy.** Two layouts went from a pass to 0, two others from 2 tools to a pass.
+- **Also seen:** the toolbox pushed in 2 trials, and strips dropped on the box's rim in 4.
+- ***Next:*** record corrections where it stalls, add demos that back off after a miss, retrain, and test with repeats.
 
 ## First results
 
@@ -189,6 +202,7 @@ Full story in the [build log](BUILD_LOG.md).
 - **A costly run is checked before it starts.** The cloud copy is byte-compared with the checked files, and the job script is run locally with stand-ins first. That caught a cleanup timer that outlived the job.
 - **Data checked before training.** Caught a hand and a laptop screen in view, and a frame bug in the review script.
 - **Eval count reset after a crash: <ins>each run gets its own folder.</ins>** The eval page now counts the earlier runs of the same checkpoint and shows the next layout number.
+- **A pass that wasn't: <ins>a tool left in the box.</ins>** One trial started with the screwdriver still in the box from the trial before. Found from the trial's first frame; the runbook now has a table check before every trial.
 - **Layout photos: <ins>the recording already has them.</ins>** Each trial starts with the arm at its start pose, so its first overhead frame is the layout picture. No screenshots needed.
 
 ## The build
