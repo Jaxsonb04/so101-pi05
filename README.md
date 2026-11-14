@@ -83,7 +83,7 @@ Updated November 13, 2026.
 <p align="center"><img src="media/2026-11-13-layouts-two-checkpoints.jpg" width="760" alt="The 20 test layouts, each labelled with the tools in the box for the 11,000 and the 10,000 step checkpoints. 11,000 passes layouts 2, 9 and 10; 10,000 passes layouts 6, 17 and 20, with layout 20 starred because it started with the screwdriver in the box."></p>
 <p align="center"><sub><b>Same layouts, different results:</b> only 6 of the 19 fair layouts got the same score from both checkpoints.</sub></p>
 
-- **Checkpoint choice doesn't matter.** Both stall the same way: 17 failures each, 40 s typical.
+- **Checkpoint choice doesn't matter.** Both stall the same way: every failure contains a long stall, 40 s typical.
 - **It isn't only strips.** In 5 trials the arm went for the screwdriver and never held it; those scored 0, 0, 0, 2 and 2.
 - **One trial per layout is too noisy.** Two layouts went from a pass to 0, two others from 2 tools to a pass.
 - **Also seen:** the toolbox pushed in 2 trials, and strips dropped on the box's rim in 4.

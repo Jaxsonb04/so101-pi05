@@ -341,11 +341,11 @@ I went through all 20 trials: the start frame, both cameras at the longest stall
 
 - Two clean passes, layouts 6 and 17, in about 60 seconds each with no long stall. Layout 17 has a strip touching the screwdriver.
 - The right side held up: 12 of 20.
-- The eval ran more smoothly: 1 stopped trial against 4 the night before, and `--continue` kept the count across three runs.
+- The eval ran more smoothly: 1 stopped trial against 4 the night before, and `--continue` counted the saved trials correctly across three runs.
 
 **What didn't**
 
-- ***All 17 failures still contain a long stall:*** 19 to 65 seconds, 40 typical, the same as 11,000. The arm hovers over a tool and closes on air.
+- ***All 17 labelled failures still contain a long stall*** (so does layout 20)***:*** 19 to 65 seconds, 40 typical, the same as 11,000. The arm hovers over a tool and closes on air.
 - ***It isn't only strips.*** In 5 of the 19 fair trials the arm went for the screwdriver and never held it. Those trials scored 0, 0, 0, 2 and 2. In two of them it didn't hold a single tool in the whole trial. Those screwdrivers were close to the arm's base, at the far edges, or right beside the box.
 - **When the first grasp fails, the trial is usually lost.** The arm rarely gives up and moves to another tool.
 - **The arm pushed the toolbox in 2 trials,** both while going after the screwdriver.
