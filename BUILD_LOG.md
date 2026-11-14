@@ -310,8 +310,60 @@ All 17 failures end the same way. After the first one to three tools, the arm ho
 2. The bottleneck is one skill: finishing a strip grasp. A different checkpoint is unlikely to fix that, since all three come from the last 20% of training.
 3. The fix is data at the moment of failure: corrections where it hovers over a strip, then a retrain.
 
+## November 13: a second checkpoint, and a tie
+
+### The 10,000-step checkpoint on the same 20 layouts
+
+I set up the same 20 layouts from the first-frame pictures and ran the 10,000-step checkpoint with the same rules. Afterwards I checked every trial's first frame against its layout picture: all 20 match.
+
+<ins>**As labelled: 3 of 20 passes, 43 of 80 tools. Counted fairly: 2 passes, 42 of 80.**</ins> The 11,000-step checkpoint got 3 passes and 42 of 80. ***The two checkpoints tie.***
+
+The fair count is lower because of my own slip. Layout 20 started with the screwdriver still in the box from the trial before, so the arm only had three tools to move. I found it in the review, from the trial's first frame.
+
+<p align="center"><img src="media/2026-11-13-layouts-two-checkpoints.jpg" width="760" alt="The 20 test layouts, each labelled with the tools in the box for the 11,000 and the 10,000 step checkpoints. 11,000 passes layouts 2, 9 and 10; 10,000 passes layouts 6, 17 and 20, with layout 20 starred because it started with the screwdriver in the box."></p>
+
+| Zone | Layouts | 10,000 steps | 11,000 steps |
+| --- | --- | --- | --- |
+| Left and front | 1–5 | 8 / 20 | 10 / 20 |
+| Right | 6–10 | 12 / 20 | 14 / 20 |
+| Far left | 11–14 | 7 / 16 | 8 / 16 |
+| Mixed and hard | 15–20 | 15 / 24 (fair count) | 10 / 24 |
+
+### The same layout, a different result
+
+***Only 6 of the 19 fair layouts got the same score from both checkpoints.*** Layouts 2 and 9 were passes for 11,000 and scored 0 for 10,000. Layouts 6 and 17 went the other way, from 2 tools to a pass. With one trial per layout, a gap of a few tools in 80 can't rank two models. The totals agree, the individual trials don't.
+
+### Reviewing every trial
+
+I went through all 20 trials: the start frame, both cameras at the longest stall, the end frames, and eight frames across each trial.
+
+**What went well**
+
+- Two clean passes, layouts 6 and 17, in about 60 seconds each with no long stall. Layout 17 has a strip touching the screwdriver.
+- The right side held up: 12 of 20.
+- The eval ran more smoothly: 1 stopped trial against 4 the night before, and `--continue` counted the saved trials correctly across three runs.
+
+**What didn't**
+
+- ***All 17 labelled failures still contain a long stall*** (so does layout 20)***:*** 19 to 65 seconds, 40 typical, the same as 11,000. The arm hovers over a tool and closes on air.
+- ***It isn't only strips.*** In 5 of the 19 fair trials the arm went for the screwdriver and never held it. Those trials scored 0, 0, 0, 2 and 2. In two of them it didn't hold a single tool in the whole trial. Those screwdrivers were close to the arm's base, at the far edges, or right beside the box.
+- **When the first grasp fails, the trial is usually lost.** The arm rarely gives up and moves to another tool.
+- **The arm pushed the toolbox in 2 trials,** both while going after the screwdriver.
+- **Sloppy drops:** in 4 trials a strip ended on the box's rim or just beside it.
+- **One trial wasn't saved.** Layout 4's label was written but its recording wasn't, so my layout count was off by one until I compared first frames and redid it.
+
+<p align="center"><img src="media/2026-11-13-other-failures.jpg" width="760" alt="Four frames from failed trials: the wrist camera with the screwdriver at the jaws in layout 9, the toolbox pushed and turned in layout 2, the toolbox knocked and left turned in layout 14, and a strip dropped just beside the box in layout 10."></p>
+
+### Takeaways
+
+1. **Checkpoint choice doesn't matter here.** Two checkpoints 1,000 steps apart tie, and both stall the same way.
+2. **The failure is "a grasp that doesn't finish, and no plan B",** on the screwdriver as well as the strips.
+3. **One trial per layout is too noisy to compare models.** Fewer layouts with repeats, such as 5 layouts × 4 trials, would show whether a result repeats.
+4. **Check the table before every trial:** box empty, four tools out, box on its tape.
+
 ## Next
 
-1. Score the 10,000 and 9,000 step checkpoints on the same 20 layouts, and keep the best.
-2. Record corrections where it stalls on a strip (DAgger), especially near the box's left edge and the arm's base, then retrain.
-3. Replace the wrist camera cable.
+1. Decide whether the 9,000-step checkpoint is worth 20 more trials, now that two checkpoints tie.
+2. Record corrections where the arm stalls (DAgger): strips at the box's left edge and near the base, and the screwdriver near the base, beside the box and at the far edges. Add demos that back off after a miss. Then retrain.
+3. Test the next model on fewer layouts with repeats.
+4. Replace the wrist camera cable.
