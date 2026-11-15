@@ -1,12 +1,12 @@
 # SO-101 → π0.5: project report
 
-**Jaxson Bie · October 3 – November 13, 2026 · paused November 15, 2026**
+**Jaxson Bie · October 3 – November 13, 2026 · finished November 15, 2026**
 
-I built two SO-101 robot arms from scratch, wired and calibrated them, added two cameras, recorded 153 demonstrations, fine-tuned Physical Intelligence's π0.5 model on them, and tested the result on the real arm with a fixed protocol. This report covers the whole journey: what I built, every problem I hit and how I solved it, what I learned, and what I'd do next.
+I built two SO-101 robot arms from scratch, wired and calibrated them, added two cameras, recorded 153 demonstrations, fine-tuned Physical Intelligence's π0.5 model on them, and tested the result on the real arm with a fixed protocol. This report covers the whole journey: what I built, every problem I hit and how I solved it, what I learned, and potential next steps.
 
 I did the building, wiring and testing myself. I used Claude Code, an AI coding assistant, to help me read the LeRobot source, write diagnostic scripts and keep notes.
 
-**Contents:** [Summary](#1-summary) · [Why it matters for test and integration](#2-why-this-project-matters-for-a-robot-integration-and-test-technician) · [Five faults worth reading](#3-five-faults-worth-reading) · [Timeline](#4-timeline) · [The system](#5-the-system-under-test) · [How I tested](#6-how-i-tested) · [Fault log](#7-fault-log) · [Results](#8-results) · [What I learned](#9-what-i-learned) · [Open issues](#10-open-issues-at-the-pause) · [Future](#11-future-considerations) · [Files](#12-files)
+**Contents:** [Summary](#1-summary) · [Why it matters for test and integration](#2-why-this-project-matters-for-a-robot-integration-and-test-technician) · [Five faults worth reading](#3-five-faults-worth-reading) · [Timeline](#4-timeline) · [The system](#5-the-system-under-test) · [How I tested](#6-how-i-tested) · [Fault log](#7-fault-log) · [Results](#8-results) · [What I learned](#9-what-i-learned) · [Open issues](#10-open-issues-at-the-finish) · [Next steps](#11-potential-next-steps) · [Files](#12-files)
 
 ---
 
@@ -19,7 +19,7 @@ I did the building, wiring and testing myself. I used Claude Code, an AI coding 
 | **Data** | 50 demonstrations, then 103 more where the model failed; every episode checked; 120 kept for retraining |
 | **Model** | π0.5, fully fine-tuned with Hugging Face LeRobot on a rented H200 GPU; runs on a MacBook Pro |
 | **Best result** | A first full pass (4 of 4 tools) on November 10; the retrained model got 42 of 80 tools in the box and 3 of 20 passes on 20 fixed layouts |
-| **Where it stands** | The model reaches every part of the table now, but it stalls when a grasp doesn't close on the tool. The fix is correction data at the moment of failure. One hardware fault (the wrist camera cable) is isolated but not yet replaced |
+| **Where it ended** | The model reaches every part of the table now, but it stalls when a grasp doesn't close on the tool. The fix is correction data at the moment of failure. One hardware fault (the wrist camera cable) is isolated but not yet replaced |
 
 <p align="center"><img src="media/2026-11-10-first-pass.gif" width="560" alt="Animated: overhead and wrist views as the arm puts three bit strips and a screwdriver into the toolbox; a label bar counts the tools in the box up to 4 of 4"></p>
 <p align="center"><sub>The first full pass, sped up 3×. <a href="https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-10-first-pass-raw.mp4">Raw video</a> · <a href="media/2026-11-10-first-pass-joints.csv">joint data</a></sub></p>
@@ -93,7 +93,7 @@ These are the five that best show how I work: isolate before replacing, check th
 | Nov 10 | First runs on the arm | Camera swap found; smooth mode replaced; eval and review tools; **first full pass**; coverage gap found |
 | Nov 11 | More data, retraining | Camera cable isolated; 103 new demos; every episode checked; 120 kept; retrained |
 | Nov 12–13 | Fixed-layout evaluation | Two checkpoints on 20 layouts: a tie at 42 of 80; every trial reviewed |
-| Nov 14–15 | Wrap-up | Kept the 11,000-step checkpoint, skipped scoring a third; project paused |
+| Nov 14–15 | Wrap-up | Kept the 11,000-step checkpoint, skipped scoring a third; project finished |
 
 ## 5. The system under test
 
@@ -266,7 +266,7 @@ Every fault I hit, grouped by type. "Isolation" is how I found the cause.
 10. **Where the data is matters more than how much there is.** 8% coverage on the right meant zero success on the right.
 11. **Write it down as you go.** The notes are how I found the swapped episodes, the false pass and the missing recording.
 
-## 10. Open issues at the pause
+## 10. Open issues at the finish
 
 | Issue | State |
 | --- | --- |
@@ -277,7 +277,7 @@ Every fault I hit, grouped by type. "Isolation" is how I found the cause.
 | One trial per layout | Too noisy to rank checkpoints |
 | LeRobot startup and shutdown fix | Local patch with tests; not offered upstream yet |
 
-## 11. Future considerations
+## 11. Potential next steps
 
 ### Hardware and test
 
