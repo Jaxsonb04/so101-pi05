@@ -28,6 +28,12 @@ Optional, once: apply the startup and shutdown fix, so the follower can't jump a
 git apply ../patches/lerobot-so101-startup-shutdown.patch
 ```
 
+The patch only takes effect if Python loads LeRobot from that folder. If it doesn't yet, install it from there, in editable mode:
+
+```bash
+pip install -e ".[pi]"
+```
+
 ## 1. Get access
 
 No hardware is needed for this step.
