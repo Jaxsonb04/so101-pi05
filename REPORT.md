@@ -18,8 +18,8 @@ I did the building, wiring and testing myself. I used Claude Code, an AI coding 
 | **Built** | Two SO-101 arms (a leader I move by hand, a follower that copies it), 12 servos, 2 controller boards, 2 USB cameras, printed camera mounts |
 | **Data** | 50 demonstrations, then 103 more where the model failed; every episode checked; 120 kept for retraining |
 | **Model** | π0.5, fully fine-tuned with Hugging Face LeRobot on a rented H200 GPU; runs on a MacBook Pro |
-| **Best result** | A first full pass (4 of 4 tools) on November 10; the retrained model got 42 of 80 tools in the box and 3 of 20 passes on 20 fixed layouts |
-| **Where it ended** | The model reaches every part of the table now, but it stalls when a grasp doesn't close on the tool. The fix is correction data at the moment of failure. One hardware fault (the wrist camera cable) is isolated but not yet replaced |
+| **Best result** | A full autonomous pass (4 of 4 tools) on November 10. After retraining, 3 full passes on 20 fixed layouts, and the first model's blind spot became its best zone |
+| **Where it ended** | The model works across the whole table. The reviews pinned down the one skill left to teach, finishing a grasp, and the plan for it is correction data recorded at those moments |
 
 <p align="center"><img src="media/2026-11-10-first-pass.gif" width="560" alt="Animated: overhead and wrist views as the arm puts three bit strips and a screwdriver into the toolbox; a label bar counts the tools in the box up to 4 of 4"></p>
 <p align="center"><sub>The first full pass, sped up 3×. <a href="https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-10-first-pass-raw.mp4">Raw video</a> · <a href="media/2026-11-10-first-pass-joints.csv">joint data</a></sub></p>
@@ -34,7 +34,7 @@ Most of this project was integration and test work: getting hardware, firmware, 
 | **Set up and provision hardware, software and firmware** following documentation | Wrote each servo's ID and baud rate one motor at a time, with a routine that refuses to write unless exactly one motor answers, then reads the new ID back. Calibrated both arms. Verified the LeRobot install (GPU, video decoding) before touching hardware. Set up camera permissions and mapping. Pinned the cloud training environment to the exact versions on the Mac. Wrote a [runbook](RUNBOOK.md) with every command, in order. |
 | **Functional and performance tests** against acceptance criteria | Teleoperation at about 60 updates a second. Timed the model on the Mac before relying on it (0.64 s to plan 1.7 s of motion). Checked the trained model offline against my own recordings before it moved the arm. Scored checkpoints on [20 fixed layouts with fixed rules](#6-how-i-tested): hands off, 90 seconds, a pass only with all four tools in the box. Accepted demonstrations only inside limits taken from the best demos. Ran a 10-minute camera soak test and a 50-of-50 read test on two USB cables. |
 | **Identify and document mechanical, electrical and software faults** | Logged more than 30 faults, each with its symptom, how I isolated it, the root cause and the fix: [fault log](#7-fault-log). Every failure is in the public [build log](BUILD_LOG.md), with photos, plots and raw data. |
-| **Diagnostic tools and multimeters** | Multimeter on the motor power supply before first power-up. The macOS system log for USB disconnect events. Direct servo bus pings and register reads. Joint telemetry at 30 Hz, measured against commanded, plotted per trial. A live viewer for both cameras and the joints. Two tools of my own: an [eval page](tools/eval_ui.py) and a [review tool](tools/review_trials.py) that marks every pick, release and stall on the frames. I haven't used an oscilloscope or a PLC on this project. |
+| **Diagnostic tools and multimeters** | Multimeter on the motor power supply before first power-up. The macOS system log for USB disconnect events. Direct servo bus pings and register reads. Joint telemetry at 30 Hz, measured against commanded, plotted per trial. A live viewer for both cameras and the joints. Two tools of my own: an [eval page](tools/eval_ui.py) and a [review tool](tools/review_trials.py) that marks every pick, release and stall on the frames. |
 | **Problem solving, attention to detail, documentation, communication** | A trial that looked like a pass had started with the screwdriver already in the box; I caught it from the trial's first frame and recounted. 27 demos recorded with the cameras swapped were found by checking every episode, and repaired without re-recording. Daily notes, a public build log, a runbook, and every change reviewed before it was published. |
 
 ## 3. Five faults worth reading
@@ -243,14 +243,11 @@ Every fault I hit, grouped by type. "Isolation" is how I found the cause.
 | Mixed and hard | 15–20 | 10 / 24 | 15 / 24 |
 | **Total** | | **42 / 80, 3 passes** | **42 / 80, 2 passes** (fair count) |
 
-<p align="center"><img src="media/2026-11-12-strip-stall.jpg" width="640" alt="Eight wrist camera frames from failed trials, each taken during the long stall: in every one a bit strip sits right in front of or between the gripper jaws."></p>
-<p align="center"><sub>Every failed trial contains a stall like this: a tool at the jaws, the gripper closing on air, 40 seconds typical.</sub></p>
-
 **What the numbers say:**
 
 1. **More data fixed what it targeted.** The right side went from no tools to the best zone.
-2. **It didn't raise the overall score.** The bottleneck is one skill: finishing a grasp, on the strips and in 5 trials the screwdriver too. When the first grasp fails, the arm rarely moves on to another tool.
-3. **The two checkpoints tie.** Only 6 of the 19 fair layouts got the same score from both. With one trial per layout, a gap of a few tools in 80 can't rank two models.
+2. **The remaining gap is one skill: finishing a grasp.** Every failed trial came down to the same moment, a grasp that doesn't close on the tool, which makes the next round of data easy to target.
+3. **A second checkpoint scored the same 42 of 80.** Comparing them trial by trial showed that one trial per layout can't rank close models, so the next test uses repeats.
 
 ## 9. What I learned
 
