@@ -22,6 +22,18 @@ source ~/miniforge3/bin/activate lerobot
 source so101.env
 ```
 
+Optional, once: apply the startup and shutdown fix, so the follower can't jump at startup and every motor is released at shutdown. This project runs LeRobot from a source checkout at commit `8c920c4` in a `lerobot/` folder here; from that folder:
+
+```bash
+git apply ../patches/lerobot-so101-startup-shutdown.patch
+```
+
+The patch only takes effect if Python loads LeRobot from that folder. If it doesn't yet, install it from there, in editable mode:
+
+```bash
+pip install -e ".[pi]"
+```
+
 ## 1. Get access
 
 No hardware is needed for this step.

@@ -6,6 +6,9 @@
 !/RUNBOOK.md
 !/so101.env.example
 !/BUILD_LOG.md
+!/REPORT.md
+!/patches/
+!/hardware/
 !/media/
 !/tools/
 /tools/__pycache__/

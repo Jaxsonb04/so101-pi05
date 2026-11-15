@@ -361,9 +361,14 @@ I went through all 20 trials: the start frame, both cameras at the longest stall
 3. **One trial per layout is too noisy to compare models.** Fewer layouts with repeats, such as 5 layouts × 4 trials, would show whether a result repeats.
 4. **Check the table before every trial:** box empty, four tools out, box on its tape.
 
-## Next
+## November 14–15: pausing here
 
-1. Decide whether the 9,000-step checkpoint is worth 20 more trials, now that two checkpoints tie.
-2. Record corrections where the arm stalls (DAgger): strips at the box's left edge and near the base, and the screwdriver near the base, beside the box and at the far edges. Add demos that back off after a miss. Then retrain.
-3. Test the next model on fewer layouts with repeats.
-4. Replace the wrist camera cable.
+I decided not to score the 9,000-step checkpoint. Two checkpoints 1,000 steps apart tie and fail the same way, so a third wouldn't change what to do next. I'm keeping the 11,000-step checkpoint.
+
+That's where I'm putting the project down for now. I wrote up the whole thing in a [project report](REPORT.md): every fault with how I isolated it, what I learned, and what I'd do next. I also published the two printed parts I changed ([hardware/](hardware/)) and my LeRobot startup and shutdown fix with its tests ([patches/](patches/lerobot-so101-startup-shutdown.patch)).
+
+## If I pick it back up
+
+1. Record corrections where the arm stalls (DAgger): strips at the box's left edge and near the base, and the screwdriver near the base, beside the box and at the far edges. Add demos that back off after a miss. Then retrain.
+2. Test the next model on fewer layouts with repeats.
+3. Replace the wrist camera cable.

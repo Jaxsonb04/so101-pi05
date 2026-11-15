@@ -1,0 +1,373 @@
+diff --git a/src/lerobot/motors/motors_bus.py b/src/lerobot/motors/motors_bus.py
+index f4a747b44..8065fddff 100644
+--- a/src/lerobot/motors/motors_bus.py
++++ b/src/lerobot/motors/motors_bus.py
+@@ -551,15 +551,39 @@ class SerialMotorsBus(MotorsBusBase):
+             disable_torque (bool, optional): If `True` (default) torque is disabled on every motor before
+                 closing the port. This can prevent damaging motors if they are left applying resisting torque
+                 after disconnect.
++
++        All motors are attempted even if one fails, and closing the port is always attempted. Shutdown failures
++        are raised after cleanup; multiple failures are reported together in an `ExceptionGroup`.
+         """
+ 
+-        if disable_torque:
+-            self.port_handler.clearPort()
+-            self.port_handler.is_using = False
+-            self.disable_torque(num_retry=5)
++        errors: list[Exception] = []
++        try:
++            if disable_torque:
++                try:
++                    self.port_handler.clearPort()
++                except Exception as error:
++                    errors.append(error)
++                self.port_handler.is_using = False
++                for motor in self.motors:
++                    try:
++                        self.disable_torque(motor, num_retry=5)
++                    except Exception as error:
++                        error.add_note(
++                            f"Disabling torque failed for motor '{motor}' (ID {self.motors[motor].id})."
++                        )
++                        errors.append(error)
++        finally:
++            try:
++                self.port_handler.closePort()
++            except Exception as error:
++                errors.append(error)
++            else:
++                logger.debug(f"{self.__class__.__name__} disconnected.")
+ 
+-        self.port_handler.closePort()
+-        logger.debug(f"{self.__class__.__name__} disconnected.")
++        if len(errors) == 1:
++            raise errors[0]
++        if errors:
++            raise ExceptionGroup(f"{self.__class__.__name__} shutdown failed.", errors)
+ 
+     @classmethod
+     def scan_port(cls, port: str, *args, **kwargs) -> dict[int, list[int]]:
+diff --git a/src/lerobot/robots/so_follower/so_follower.py b/src/lerobot/robots/so_follower/so_follower.py
+index 177e9ef42..0b4bc42d0 100644
+--- a/src/lerobot/robots/so_follower/so_follower.py
++++ b/src/lerobot/robots/so_follower/so_follower.py
+@@ -181,18 +181,32 @@ class SOFollower(Robot):
+         print("Calibration saved to", self.calibration_fpath)
+ 
+     def configure(self) -> None:
+-        with self.bus.torque_disabled():
+-            self.bus.configure_motors()
+-            for motor in self.bus.motors:
+-                self.bus.write("Operating_Mode", motor, OperatingMode.POSITION.value)
+-                self.bus.write("P_Coefficient", motor, self.config.position_p_coefficient)
+-                self.bus.write("I_Coefficient", motor, self.config.position_i_coefficient)
+-                self.bus.write("D_Coefficient", motor, self.config.position_d_coefficient)
+-
+-                if motor == "gripper":
+-                    self.bus.write("Max_Torque_Limit", motor, 500)  # 50% of max torque to avoid burnout
+-                    self.bus.write("Protection_Current", motor, 250)  # 50% of max current to avoid burnout
+-                    self.bus.write("Overload_Torque", motor, 25)  # 25% torque when overloaded
++        # Only enable torque after configuration and every initial goal succeed. The
++        # torque_disabled context would also re-enable it when configuration raises.
++        self.bus.disable_torque()
++        self.bus.configure_motors()
++        for motor in self.bus.motors:
++            self.bus.write("Operating_Mode", motor, OperatingMode.POSITION.value)
++            self.bus.write("P_Coefficient", motor, self.config.position_p_coefficient)
++            self.bus.write("I_Coefficient", motor, self.config.position_i_coefficient)
++            self.bus.write("D_Coefficient", motor, self.config.position_d_coefficient)
++
++            if motor == "gripper":
++                self.bus.write("Max_Torque_Limit", motor, 500)  # 50% of max torque to avoid burnout
++                self.bus.write("Protection_Current", motor, 250)  # 50% of max current to avoid burnout
++                self.bus.write("Overload_Torque", motor, 25)  # 25% torque when overloaded
++
++        # Power-up goals can be zero or stale. Read each joint individually so a
++        # servo error is checked, and seed raw goals before any motor is enabled.
++        positions = {
++            motor: self.bus.read(
++                "Present_Position", motor, normalize=False, num_retry=self.config.num_read_retries
++            )
++            for motor in self.bus.motors
++        }
++        for motor, position in positions.items():
++            self.bus.write("Goal_Position", motor, position, normalize=False)
++        self.bus.enable_torque()
+ 
+     def setup_motors(self) -> None:
+         for motor in reversed(self.bus.motors):
+diff --git a/tests/robots/test_so_follower_startup_safety.py b/tests/robots/test_so_follower_startup_safety.py
+new file mode 100644
+index 000000000..dbead80a1
+--- /dev/null
++++ b/tests/robots/test_so_follower_startup_safety.py
+@@ -0,0 +1,124 @@
++# Copyright 2026 The HuggingFace Inc. team. All rights reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++from collections.abc import Iterator
++from contextlib import contextmanager
++from types import SimpleNamespace
++from typing import Any
++
++import pytest
++
++from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
++
++MOTOR_NAMES = (
++    "shoulder_pan",
++    "shoulder_lift",
++    "elbow_flex",
++    "wrist_flex",
++    "wrist_roll",
++    "gripper",
++)
++
++
++class StartupBus:
++    """Track the goals active at torque enable without opening a serial port."""
++
++    def __init__(self, fault: str | None = None) -> None:
++        self.motors = dict.fromkeys(MOTOR_NAMES)
++        self.present = {name: 1800 + index * 100 for index, name in enumerate(MOTOR_NAMES)}
++        self.goals = dict.fromkeys(MOTOR_NAMES, 0)
++        self.torque_enabled = False
++        self.enable_snapshots: list[dict[str, int]] = []
++        self.fault = fault
++
++    def disable_torque(self, *args: Any, **kwargs: Any) -> None:
++        self.torque_enabled = False
++
++    def enable_torque(self, *args: Any, **kwargs: Any) -> None:
++        self.enable_snapshots.append(self.goals.copy())
++        self.torque_enabled = True
++
++    @contextmanager
++    def torque_disabled(self, *args: Any, **kwargs: Any) -> Iterator[None]:
++        # Match the real bus: this context enables torque even when the body fails.
++        self.disable_torque()
++        try:
++            yield
++        finally:
++            self.enable_torque()
++
++    def configure_motors(self) -> None:
++        assert not self.torque_enabled
++        if self.fault == "configure":
++            raise RuntimeError("injected configure fault")
++
++    def sync_read(self, field: str, *, normalize: bool = True, **kwargs: Any) -> dict[str, float]:
++        assert not self.torque_enabled
++        assert field == "Present_Position"
++        if self.fault == "read":
++            raise RuntimeError("injected read fault")
++        return {name: value / 100 if normalize else value for name, value in self.present.items()}
++
++    def read(self, field: str, motor: str, *, normalize: bool = True, **kwargs: Any) -> float:
++        assert not self.torque_enabled
++        if self.fault == "read":
++            raise RuntimeError("injected read fault")
++        if field == "Present_Position":
++            return self.present[motor] / 100 if normalize else self.present[motor]
++        if field == "Goal_Position":
++            return self.goals[motor] / 100 if normalize else self.goals[motor]
++        raise AssertionError(field)
++
++    def write(self, field: str, motor: str, value: float, *, normalize: bool = True, **kwargs: Any) -> None:
++        assert not self.torque_enabled
++        if self.fault == "configure_write" and field == "P_Coefficient" and motor == "elbow_flex":
++            raise RuntimeError("injected configure_write fault")
++        if field != "Goal_Position":
++            return
++        if self.fault == "seed" and motor == "elbow_flex":
++            raise RuntimeError("injected seed fault")
++        self.goals[motor] = int(value * 100 if normalize else value)
++
++    def sync_write(
++        self, field: str, values: dict[str, float], *, normalize: bool = True, **kwargs: Any
++    ) -> None:
++        for motor, value in values.items():
++            self.write(field, motor, value, normalize=normalize)
++
++
++def make_follower(bus: StartupBus) -> SimpleNamespace:
++    # Call only configure(), without constructing a robot or any hardware bus.
++    return SimpleNamespace(bus=bus, config=SO101FollowerConfig(port="/dev/null"))
++
++
++def test_configure_seeds_raw_current_positions_before_enabling_torque() -> None:
++    bus = StartupBus()
++
++    SO101Follower.configure(make_follower(bus))
++
++    assert bus.torque_enabled
++    assert bus.enable_snapshots, "successful startup must enable torque"
++    assert all(snapshot == bus.present for snapshot in bus.enable_snapshots)
++    assert bus.goals == bus.present
++
++
++@pytest.mark.parametrize("fault", ["configure", "configure_write", "read", "seed"])
++def test_configure_failure_leaves_torque_disabled(fault: str) -> None:
++    bus = StartupBus(fault=fault)
++
++    with pytest.raises(RuntimeError, match=f"injected {fault} fault"):
++        SO101Follower.configure(make_follower(bus))
++
++    assert not bus.torque_enabled
++    assert not bus.enable_snapshots, "startup failures must never enable torque"
+diff --git a/tests/motors/test_motors_bus_shutdown.py b/tests/motors/test_motors_bus_shutdown.py
+new file mode 100644
+index 000000000..5758ca38f
+--- /dev/null
++++ b/tests/motors/test_motors_bus_shutdown.py
+@@ -0,0 +1,138 @@
++# Copyright 2026 The HuggingFace Inc. team. All rights reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++from dataclasses import dataclass, field
++from unittest.mock import Mock
++
++import pytest
++
++from lerobot.motors import Motor, MotorNormMode
++from tests.mocks.mock_motors_bus import MockMotorsBus
++
++
++@dataclass
++class ShutdownState:
++    enabled_ids: set[int] = field(default_factory=lambda: set(range(1, 7)))
++    attempted_ids: list[int] = field(default_factory=list)
++    errors: dict[int, Exception] = field(default_factory=dict)
++
++
++@pytest.fixture
++def shutdown_bus(monkeypatch) -> tuple[MockMotorsBus, ShutdownState]:
++    """Model enabled joints without opening any serial device."""
++    bus = MockMotorsBus(
++        "/dev/mock-shutdown",
++        {f"joint_{i}": Motor(i, "model_2", MotorNormMode.DEGREES) for i in range(1, 7)},
++    )
++    bus.port_handler.is_open = True
++    bus.port_handler.is_using = True
++    state = ShutdownState()
++
++    def disable_torque(motors: str | list[str] | None = None, num_retry: int = 0) -> None:
++        assert num_retry == 5
++        for name in bus._get_motors_list(motors):
++            motor_id = bus.motors[name].id
++            state.attempted_ids.append(motor_id)
++            if motor_id in state.errors:
++                raise state.errors[motor_id]
++            state.enabled_ids.remove(motor_id)
++
++    monkeypatch.setattr(bus, "disable_torque", Mock(side_effect=disable_torque))
++    monkeypatch.setattr(bus.port_handler, "clearPort", Mock())
++    monkeypatch.setattr(bus.port_handler, "closePort", Mock(wraps=bus.port_handler.closePort))
++    return bus, state
++
++
++def test_disconnect_attempts_every_joint_and_closes_after_elbow_overload(shutdown_bus):
++    bus, state = shutdown_bus
++    overload = RuntimeError("ID 3: Overload error!")
++    state.errors[3] = overload
++
++    with pytest.raises(RuntimeError, match="ID 3: Overload error!") as caught:
++        bus.disconnect()
++
++    assert caught.value is overload
++    assert state.attempted_ids == [1, 2, 3, 4, 5, 6]
++    assert state.enabled_ids == {3}
++    assert not bus.is_connected
++    bus.port_handler.closePort.assert_called_once_with()
++
++
++def test_disconnect_disables_all_joints_and_closes(shutdown_bus):
++    bus, state = shutdown_bus
++
++    bus.disconnect()
++
++    assert state.attempted_ids == [1, 2, 3, 4, 5, 6]
++    assert not state.enabled_ids
++    assert not bus.is_connected
++    assert not bus.port_handler.is_using
++    bus.port_handler.clearPort.assert_called_once_with()
++    bus.port_handler.closePort.assert_called_once_with()
++
++
++def test_disconnect_without_torque_writes_only_closes(shutdown_bus):
++    bus, state = shutdown_bus
++
++    bus.disconnect(disable_torque=False)
++
++    assert state.enabled_ids == set(range(1, 7))
++    assert not state.attempted_ids
++    assert not bus.is_connected
++    bus.disable_torque.assert_not_called()
++    bus.port_handler.clearPort.assert_not_called()
++    bus.port_handler.closePort.assert_called_once_with()
++
++
++def test_disconnect_reports_all_motor_faults_after_closing(shutdown_bus):
++    bus, state = shutdown_bus
++    state.errors = {3: RuntimeError("ID 3 overload"), 5: ConnectionError("ID 5 timeout")}
++
++    with pytest.raises(ExceptionGroup) as caught:
++        bus.disconnect()
++
++    assert caught.value.exceptions == tuple(state.errors.values())
++    assert state.attempted_ids == [1, 2, 3, 4, 5, 6]
++    assert state.enabled_ids == {3, 5}
++    assert not bus.is_connected
++
++
++def test_disconnect_still_disables_and_closes_if_clearing_port_fails(shutdown_bus):
++    bus, state = shutdown_bus
++    clear_error = OSError("Cannot clear serial input")
++    bus.port_handler.clearPort.side_effect = clear_error
++
++    with pytest.raises(OSError, match="Cannot clear serial input") as caught:
++        bus.disconnect()
++
++    assert caught.value is clear_error
++    assert not state.enabled_ids
++    assert not bus.is_connected
++    assert not bus.port_handler.is_using
++
++
++def test_disconnect_preserves_motor_fault_if_port_close_also_fails(shutdown_bus):
++    bus, state = shutdown_bus
++    overload = RuntimeError("ID 3 overload")
++    close_error = OSError("Cannot close serial port")
++    state.errors[3] = overload
++    bus.port_handler.closePort.side_effect = close_error
++
++    with pytest.raises(ExceptionGroup) as caught:
++        bus.disconnect()
++
++    assert caught.value.exceptions == (overload, close_error)
++    assert state.attempted_ids == [1, 2, 3, 4, 5, 6]
++    assert state.enabled_ids == {3}
++    bus.port_handler.closePort.assert_called_once_with()
