@@ -11,7 +11,7 @@
 </p>
 
 > [!IMPORTANT]
-> **Project paused November 15, 2026.** The full write-up is in the **[project report](REPORT.md)**: the journey, every fault and how it was found and fixed, what was learned, and what comes next.
+> **Project finished November 15, 2026.** The full write-up is in the **[project report](REPORT.md)**: the journey, every fault and how it was found and fixed, what was learned, and potential next steps.
 
 <p align="center">
   <a href="REPORT.md"><b>Report</b></a> ·
@@ -36,7 +36,7 @@
 
 ## Status
 
-Updated November 15, 2026. **Paused here.**
+Updated November 15, 2026. **Finished.**
 
 | Step | Status |
 | --- | --- |
@@ -54,8 +54,8 @@ Updated November 15, 2026. **Paused here.**
 | Score 20 fixed layouts | ✅ 3 of 20 passes (11,000 steps) |
 | Score a second checkpoint | ✅ A tie (10,000 steps) |
 | Review every trial | ✅ Done |
-| Corrections where it stalls | ⏸️ Next, if resumed |
-| Replace the wrist camera cable | ⏸️ Fault isolated, not replaced |
+| Corrections where it stalls | ➡️ Potential next step |
+| Replace the wrist camera cable | ➡️ Potential next step (fault isolated) |
 
 > [!NOTE]
 > The wrist camera still drops off USB at times, and macOS can then swap the two cameras' numbers. The tools detect this and fix it before the arm moves.
@@ -93,7 +93,7 @@ Updated November 15, 2026. **Paused here.**
 - **It isn't only strips.** In 5 trials the arm went for the screwdriver and never held it; those scored 0, 0, 0, 2 and 2.
 - **One trial per layout is too noisy.** Two layouts went from a pass to 0, two others from 2 tools to a pass.
 - **Also seen:** the toolbox pushed in 2 trials, and strips dropped on the box's rim in 4.
-- ***If resumed:*** record corrections where it stalls, add demos that back off after a miss, retrain, and test with repeats. More in the [report](REPORT.md#11-future-considerations).
+- ***Potential next steps:*** record corrections where it stalls, add demos that back off after a miss, retrain, and test with repeats. More in the [report](REPORT.md#11-potential-next-steps).
 
 ## First results
 
