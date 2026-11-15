@@ -26,7 +26,7 @@
 - **Built two robot arms from parts.** Printed every piece, set up all 12 servos one at a time, wired both arms, and calibrated the pair to <ins>**under 0.5° apart**</ins>.
 - **Brought up a full robot learning system.** Teleoperation at 60 Hz, two cameras, 153 recorded demonstrations, π0.5 fine-tuned on a cloud GPU, and the model driving the arm live from a MacBook.
 - **The arm did the whole task on its own:** <ins>**all four tools into the toolbox**</ins>, then <ins>**3 full passes**</ins> on a 20-layout test after retraining.
-- **Found and fixed 36 problems** across mechanical, electrical, software and data, each traced to its root cause and written up in the [report](REPORT.md#7-fault-log).
+- **Tracked down 36 problems** across mechanical, electrical, software and data, each traced to its root cause and written up in the [report](REPORT.md#7-fault-log).
 - **Built the test tools the job needed:** a recording page, a scoring page, and a review tool that marks every pick, drop and pause on the video.
 - **Tested it like a fleet robot:** the same 20 layouts and the same rules for every model, every trial recorded and reviewed.
 - **Fixed a motor-safety bug in LeRobot:** motors switched on before they had a target. Reproduced it in tests first, then fixed it ([patch](patches/lerobot-so101-startup-shutdown.patch)).
