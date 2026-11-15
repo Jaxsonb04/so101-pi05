@@ -10,7 +10,11 @@
   <sub>Sped up 3×, pauses between moves cut. <a href="https://github.com/Jaxsonb04/so101-pi05/raw/main/media/2026-11-10-first-pass.mp4">MP4 at real speed</a></sub>
 </p>
 
+> [!IMPORTANT]
+> **Project paused November 15, 2026.** The full write-up is in the **[project report](REPORT.md)**: the journey, every fault and how it was found and fixed, what was learned, and what comes next.
+
 <p align="center">
+  <a href="REPORT.md"><b>Report</b></a> ·
   <a href="#status">Status</a> ·
   <a href="#latest-results">Latest results</a> ·
   <a href="#first-results">First results</a> ·
@@ -28,10 +32,11 @@
 - ***Taught:*** 50 demonstrations, then fine-tuned [π0.5](https://www.physicalintelligence.company/blog/pi05) with [Hugging Face LeRobot](https://github.com/huggingface/lerobot).
 - ***Fixed the data:*** 103 more demos where it failed, every episode checked, <ins>**120 kept for retraining**</ins>.
 - ***Retrained and tested:*** two checkpoints on 20 fixed layouts, <ins>**a tie at 42 of 80 tools in the box**</ins> (3 and 2 full passes). The right side is fixed; every failure stalls on a grasp.
+- ***Debugged along the way:*** more than 30 mechanical, electrical, software and data faults, each isolated and logged. The [report](REPORT.md#7-fault-log) has the full list.
 
 ## Status
 
-Updated November 13, 2026.
+Updated November 15, 2026. **Paused here.**
 
 | Step | Status |
 | --- | --- |
@@ -49,7 +54,8 @@ Updated November 13, 2026.
 | Score 20 fixed layouts | ✅ 3 of 20 passes (11,000 steps) |
 | Score a second checkpoint | ✅ A tie (10,000 steps) |
 | Review every trial | ✅ Done |
-| Corrections where it stalls | ⏳ Next |
+| Corrections where it stalls | ⏸️ Next, if resumed |
+| Replace the wrist camera cable | ⏸️ Fault isolated, not replaced |
 
 > [!NOTE]
 > The wrist camera still drops off USB at times, and macOS can then swap the two cameras' numbers. The tools detect this and fix it before the arm moves.
@@ -87,7 +93,7 @@ Updated November 13, 2026.
 - **It isn't only strips.** In 5 trials the arm went for the screwdriver and never held it; those scored 0, 0, 0, 2 and 2.
 - **One trial per layout is too noisy.** Two layouts went from a pass to 0, two others from 2 tools to a pass.
 - **Also seen:** the toolbox pushed in 2 trials, and strips dropped on the box's rim in 4.
-- ***Next:*** record corrections where it stalls, add demos that back off after a miss, retrain, and test with repeats.
+- ***If resumed:*** record corrections where it stalls, add demos that back off after a miss, retrain, and test with repeats. More in the [report](REPORT.md#11-future-considerations).
 
 ## First results
 
@@ -187,7 +193,7 @@ Training runs on a rented cloud GPU and is ***expensive*** (about $37 a run), so
 
 ## Problems solved
 
-Full story in the [build log](BUILD_LOG.md).
+Full story in the [build log](BUILD_LOG.md); every fault with how it was isolated in the [report](REPORT.md#7-fault-log).
 
 - **21 failed trials: <ins>cameras swapped, not a bad model.</ins>** After a USB dropout macOS swapped the two identical cameras. The pages now compare the feeds (only the overhead sees the wall) and fix the order.
 - **Indecisive arm: <ins>smooth mode replanned too often.</ins>** Real-time mode switched targets every ~0.7 s. Plain mode commits for 1.7 s: ***0 → 5 of 20 tools.***
@@ -195,7 +201,7 @@ Full story in the [build log](BUILD_LOG.md).
 - **Wrist camera cutouts: <ins>a cable, not bandwidth.</ins>** The macOS log showed ~200 physical disconnects in one evening, on that camera only.
 - **Cloud model wouldn't load: <ins>version mismatch.</ins>** A cheap test job caught renamed weights in a newer LeRobot. Pinning the cloud to the Mac's versions fixed it.
 - **Arms didn't line up: <ins>uneven calibration sweeps.</ins>** A joint's zero is the middle of its swept range. Matching the sweeps cut the gap from ~7° to under 0.5°.
-- **Startup lurch: <ins>motors on before a target was set.</ins>** Fixed the order; tests reproduce the bug first.
+- **Startup lurch: <ins>motors on before a target was set.</ins>** Fixed the order; tests reproduce the bug first. [Patch](patches/lerobot-so101-startup-shutdown.patch).
 - **27 demos recorded swapped: <ins>a limp arm fooled the camera check.</ins>** After a crash the wrist camera faced the wall at restart. Found with a wall test on every episode, repaired without re-recording; the page now rechecks at every take.
 - **Good grasps counted as misses: <ins>thin strips.</ins>** A strip pinched by its edge leaves the jaws almost shut. Counting by arm travel instead restored 6 wrongly failed demos.
 - **A training set that lost the left side: <ins>too strict a filter.</ins>** Keeping only old demos with the same tool order dropped most left-side examples. Keeping every old demo with the box on its spot fixed it.
@@ -242,6 +248,7 @@ Full story in the [build log](BUILD_LOG.md).
 | Controllers | 2 Waveshare servo boards |
 | Cameras | 2 small USB cameras: wrist and overhead |
 | Software | LeRobot on a MacBook Pro (M3 Max), plus custom [recording, scoring and review tools](tools/) |
+| Changed parts | Controller mount holes +0.2 mm, leader handle slot +1 mm: [hardware/](hardware/) |
 
 ## How it learns
 
@@ -254,6 +261,18 @@ Full story in the [build log](BUILD_LOG.md).
 7. ***Repeat:*** more data where it fails, retrain, publish results, failures included.
 
 Every command: [runbook](RUNBOOK.md).
+
+## In this repo
+
+| Path | What it is |
+| --- | --- |
+| [REPORT.md](REPORT.md) | Final project report |
+| [BUILD_LOG.md](BUILD_LOG.md) | Day-by-day build log, mistakes included |
+| [RUNBOOK.md](RUNBOOK.md) | Every command, in order |
+| [tools/](tools/) | Recording page, eval page, review tool, cloud training job |
+| [patches/](patches/lerobot-so101-startup-shutdown.patch) | LeRobot startup and shutdown fix, with tests |
+| [hardware/](hardware/) | The two revised printed parts and the script that made the handle revision |
+| [media/](media/) | Photos, videos, plots and raw joint data |
 
 ## Credits
 
