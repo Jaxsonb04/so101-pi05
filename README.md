@@ -165,6 +165,7 @@ Training runs on a rented cloud GPU, so every episode was checked first: every f
 | Part | Used |
 | --- | --- |
 | Arms | Two SO-101s in PLA+: a leader moved by hand and a follower that copies it |
+| Printing | Bambu Lab P1S; small STL fit edits in Bambu Studio and Blender |
 | Motors | 12 Feetech STS3215 servos in three gear ratios |
 | Controllers | 2 Waveshare servo boards |
 | Cameras | 2 USB cameras: wrist and overhead |
