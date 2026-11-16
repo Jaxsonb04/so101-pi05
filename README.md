@@ -17,6 +17,7 @@
   <a href="#results">Results</a> ·
   <a href="#test-tools-built-for-the-job">Test tools</a> ·
   <a href="#the-build">Build</a> ·
+  <a href="#3d-printed-parts">3D printing</a> ·
   <a href="BUILD_LOG.md">Build log</a> ·
   <a href="RUNBOOK.md">Runbook</a>
 </p>
@@ -24,6 +25,7 @@
 ## Highlights
 
 - **Built two robot arms from parts.** Printed every piece, set up all 12 servos one at a time, wired both arms, and calibrated the pair to <ins>**under 0.5° apart**</ins>.
+- **Refit the 3D-printed parts to the real hardware.** Some of the published STL files didn't fit the real servos or the other printed parts once printed, so they were <ins>**edited in Bambu Studio and Blender**</ins> and test-printed until each part fit. The fixed files are in [hardware/](hardware/) ([details](#3d-printed-parts)).
 - **Brought up a full robot learning system.** Teleoperation at 60 Hz, two cameras, 153 recorded demonstrations, π0.5 fine-tuned on a cloud GPU, and the model driving the arm live from a MacBook.
 - **The arm did the whole task on its own:** <ins>**all four tools into the toolbox**</ins>, then <ins>**3 full passes**</ins> on a 20-layout test after retraining.
 - **Tracked down 36 problems** across mechanical, electrical, software and data, each traced to its root cause and written up in the [report](REPORT.md#7-fault-log).
@@ -165,12 +167,23 @@ Training runs on a rented cloud GPU, so every episode was checked first: every f
 | Part | Used |
 | --- | --- |
 | Arms | Two SO-101s in PLA+: a leader moved by hand and a follower that copies it |
-| Printing | Bambu Lab P1S; small STL fit edits in Bambu Studio and Blender |
+| Printing | Bambu Lab P1S; STL fit edits in Bambu Studio and Blender ([details](#3d-printed-parts)) |
 | Motors | 12 Feetech STS3215 servos in three gear ratios |
 | Controllers | 2 Waveshare servo boards |
 | Cameras | 2 USB cameras: wrist and overhead |
 | Software | LeRobot on a MacBook Pro (M3 Max), plus custom [recording, scoring and review tools](tools/) |
-| Redesigned parts | Controller mount holes and the leader's handle slot, refit for printed tolerances: [hardware/](hardware/) |
+
+### 3D-printed parts
+
+Every structural part of both arms was printed in PLA+ on a Bambu Lab P1S, plus the overhead camera stand and the wrist camera mount.
+
+The published STL files don't always fit once printed. A real printer makes holes and slots come out tighter than the model, so some parts wouldn't fit the actual servos or the other printed parts. Those STLs were <ins>**edited in Bambu Studio and Blender**</ins> (the handle slot also by a script that checks the result), and small test prints settled each change before the full part was reprinted.
+
+| Part | The problem | The fix |
+| --- | --- | --- |
+| Controller mount | The board's brass spacers wouldn't go into the holes | Holes widened <ins>**+0.2 mm**</ins>; a +0.6 mm test print was too loose ([STL](hardware/WaveShare_Mounting_Plate_SO101_Holes_Plus_0p2mm.stl)) |
+| Leader handle | Wouldn't slide into its mount | Slot widened <ins>**1 mm**</ins>, 0.5 mm per side, outside size unchanged ([STL](hardware/Handle_SO101_Slot_Plus_1mm_Upright.stl), [script](hardware/make_handle_revision.py), [check](hardware/geometry-check.json)) |
+| Print orientation | Supports would scar the grip and the faces that mate | Handle printed standing; wrist mount picked from six orientations |
 
 ## How it learns
 
